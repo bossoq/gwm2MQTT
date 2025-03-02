@@ -420,7 +420,7 @@ pub async fn publish_discovery(
     );
     payload_map.insert(
         format!(
-            "{}/sensor/{}_{}/config",
+            "{}/device_tracker/{}_{}/config",
             &*MQTT_CONFIG.discovery_topic, &prefix, "tracker"
         ),
         json!({
