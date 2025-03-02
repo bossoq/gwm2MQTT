@@ -1088,7 +1088,7 @@ pub async fn publish_state(
             "charge": vehicle_status.soc,
             "range": vehicle_status.range,
             "mileage": vehicle_status.mileage,
-            "update_on": vehicle_status.updated_at
+            "updated_on": vehicle_status.updated_at
         })
         .to_string(),
     );
