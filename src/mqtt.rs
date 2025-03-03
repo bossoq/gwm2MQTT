@@ -932,16 +932,21 @@ pub async fn publish_discovery(
     );
     payload_map.insert(
         format!(
-            "{}/button/{}_{}/config",
-            &*MQTT_CONFIG.discovery_topic, &prefix, "lock_command"
+            "{}/switch/{}_{}/config",
+            &*MQTT_CONFIG.discovery_topic, &prefix, "lock_control"
         ),
         json!({
-            "availability": availability,
-            "name": format!("{} Lock", vehicle_info.showed_vin),
-            "unique_id": format!("{}_lock_command", prefix),
+            "availability": [
+                {
+                    "topic": format!("{}/lock/availability", topic_prefix), "value_template": "{{ value }}"
+                }
+            ],
+            "name": format!("{} Lock Control", vehicle_info.showed_vin),
+            "unique_id": format!("{}_lock_control", prefix),
             "icon": "mdi:lock",
+            "state_topic": format!("{}/state", topic_prefix),
+            "value_template": "{{ value_json.unlock_status if (value_json is defined and value_json.unlock_status is defined) else 'OFF' }}",
             "command_topic": format!("{}/lock/set", topic_prefix),
-            "payload_press": "LOCK",
             "json_attributes_topic": attributes_topic.clone(),
             "json_attributes_template": "{{ value }}",
             "device": device,
@@ -950,52 +955,21 @@ pub async fn publish_discovery(
     );
     payload_map.insert(
         format!(
-            "{}/button/{}_{}/config",
-            &*MQTT_CONFIG.discovery_topic, &prefix, "unlock_command"
+            "{}/switch/{}_{}/config",
+            &*MQTT_CONFIG.discovery_topic, &prefix, "climate_control"
         ),
         json!({
-            "availability": availability,
-            "name": format!("{} Unlock", vehicle_info.showed_vin),
-            "unique_id": format!("{}_unlock_command", prefix),
-            "icon": "mdi:lock-open",
-            "command_topic": format!("{}/lock/set", topic_prefix),
-            "payload_press": "UNLOCK",
-            "json_attributes_topic": attributes_topic.clone(),
-            "json_attributes_template": "{{ value }}",
-            "device": device,
-        })
-        .to_string(),
-    );
-    payload_map.insert(
-        format!(
-            "{}/button/{}_{}/config",
-            &*MQTT_CONFIG.discovery_topic, &prefix, "ac_on_command"
-        ),
-        json!({
-            "availability": availability,
-            "name": format!("{} AC On", vehicle_info.showed_vin),
-            "unique_id": format!("{}_ac_on_command", prefix),
+            "availability": [
+                {
+                    "topic": format!("{}/aircond/availability", topic_prefix), "value_template": "{{ value }}"
+                }
+            ],
+            "name": format!("{} Climate Control", vehicle_info.showed_vin),
+            "unique_id": format!("{}_climate_control", prefix),
             "icon": "mdi:air-conditioner",
+            "state_topic": format!("{}/state", topic_prefix),
+            "value_template": "{{ value_json.ac_status if (value_json is defined and value_json.ac_status is defined) else 'OFF' }}",
             "command_topic": format!("{}/aircond/set", topic_prefix),
-            "payload_press": "ON",
-            "json_attributes_topic": attributes_topic.clone(),
-            "json_attributes_template": "{{ value }}",
-            "device": device,
-        })
-        .to_string(),
-    );
-    payload_map.insert(
-        format!(
-            "{}/button/{}_{}/config",
-            &*MQTT_CONFIG.discovery_topic, &prefix, "ac_off_command"
-        ),
-        json!({
-            "availability": availability,
-            "name": format!("{} AC Off", vehicle_info.showed_vin),
-            "unique_id": format!("{}_ac_off_command", prefix),
-            "icon": "mdi:hvac-off",
-            "command_topic": format!("{}/aircond/set", topic_prefix),
-            "payload_press": "OFF",
             "json_attributes_topic": attributes_topic.clone(),
             "json_attributes_template": "{{ value }}",
             "device": device,
@@ -1044,6 +1018,25 @@ pub async fn publish_discovery(
             "step": 1,
             "state_topic": format!("{}/state", topic_prefix),
             "value_template": "{{ value_json.ac_temp if (value_json is defined and value_json.ac_temp is defined and value_json.ac_temp|int >= 17 and value_json.ac_temp|int <= 31) else '26' }}",
+            "json_attributes_topic": attributes_topic.clone(),
+            "json_attributes_template": "{{ value }}",
+            "device": device,
+        })
+        .to_string(),
+    );
+    payload_map.insert(
+        format!(
+            "{}/switch/{}_{}/config",
+            &*MQTT_CONFIG.discovery_topic, &prefix, "petmode"
+        ),
+        json!({
+            "availability": availability,
+            "name": format!("{} Pet Mode", vehicle_info.showed_vin),
+            "unique_id": format!("{}_petmode", prefix),
+            "icon": "mdi:paw",
+            "state_topic": format!("{}/state", topic_prefix),
+            "value_template": "{{ value_json.petmode if (value_json is defined and value_json.petmode is defined) else 'OFF' }}",
+            "command_topic": format!("{}/petmode/set", topic_prefix),
             "json_attributes_topic": attributes_topic.clone(),
             "json_attributes_template": "{{ value }}",
             "device": device,
@@ -1241,6 +1234,11 @@ pub async fn publish_state(
             },
             "ac_time": vehicle_status.ac_time,
             "ac_temp": vehicle_status.ac_temp,
+            "petmode": if vehicle_status.petmode {
+                "ON"
+            } else {
+                "OFF"
+            },
         })
         .to_string(),
     );

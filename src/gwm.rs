@@ -181,6 +181,7 @@ pub struct VehicleStatus {
     pub latitude: f64,
     pub ac_time: i64,
     pub ac_temp: i64,
+    pub petmode: bool,
     pub updated_at: DateTime<Utc>,
 }
 impl Default for VehicleStatus {
@@ -231,6 +232,7 @@ impl Default for VehicleStatus {
             latitude: 0.0,
             ac_time: 15,
             ac_temp: 26,
+            petmode: false,
             updated_at: Utc::now(),
         }
     }
@@ -773,6 +775,7 @@ fn parse_vehicle_status(vin: &str, data: &Value) -> VehicleStatus {
         latitude: data["latitude"].as_f64().unwrap_or(0.0),
         ac_time: 15,
         ac_temp: 26,
+        petmode: false,
         updated_at: DateTime::from_timestamp_millis(data["updateTime"].as_i64().unwrap_or(0))
             .unwrap_or(Utc::now()),
     }
