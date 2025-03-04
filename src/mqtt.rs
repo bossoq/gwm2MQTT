@@ -112,7 +112,7 @@ pub async fn parse_payload(event: Event) -> Result<Value, Box<dyn std::error::Er
 }
 
 pub async fn publish_discovery(
-    client: &mut AsyncClient,
+    client: &AsyncClient,
     vehicle_info: &gwm::VehicleInfo,
     topic_prefix: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -1059,7 +1059,7 @@ pub async fn publish_discovery(
 }
 
 pub async fn publish_state(
-    client: &mut AsyncClient,
+    client: &AsyncClient,
     vehicle_info: &gwm::VehicleInfo,
     vehicle_status: &gwm::VehicleStatus,
     topic_prefix: &str,

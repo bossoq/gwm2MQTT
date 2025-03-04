@@ -45,339 +45,121 @@ static MQTT_PUBLISH: LazyLock<Mutex<bool>> = LazyLock::new(|| Mutex::new(false))
 static DEBOUNCE_LOCK: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new("".to_string()));
 static DEBOUNCE_AC: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new("".to_string()));
 static PETMODE: LazyLock<Mutex<bool>> = LazyLock::new(|| Mutex::new(false));
+static MQTT_CLIENT: LazyLock<Mutex<Option<rumqttc::AsyncClient>>> =
+    LazyLock::new(|| Mutex::new(None));
 
 #[tokio::main]
 pub async fn run() {
-    let (mut main_client, mut eventloop) = mqtt_setup().await.unwrap();
+    let (main_client, mut eventloop) = mqtt_setup().await.unwrap();
+    *MQTT_CLIENT.lock().await = Some(main_client);
     setup().await;
     let vehicle_info = VEHICLE_INFO.lock().await.clone();
     let brand_name = vehicle_info.brand_name.clone().to_lowercase();
     let last_vin = vehicle_info.showed_vin[15..].to_string();
     let topic_prefix = format!("{}/{}_{}", &*MQTT_CONFIG.topic_prefix, brand_name, last_vin);
     tokio::spawn(async move {
-        match publish_discovery(&mut main_client, &vehicle_info, &topic_prefix).await {
-            Ok(_) => {
-                info!("Discovery published");
-            }
-            Err(e) => {
-                error!("Failed to publish discovery: {}", e);
+        loop {
+            match eventloop.poll().await {
+                Ok(event) => {
+                    println!("{:?}", event);
+                    handle_event(event).await;
+                }
+                Err(e) => {
+                    error!("Error: {:?}", e);
+                }
             }
         }
-        let switch_topic = HashMap::from([
-            ("lock".to_string(), "online".to_string()),
-            ("aircond".to_string(), "online".to_string()),
-            ("petmode".to_string(), "online".to_string()),
-        ]);
-        publish_availability(switch_topic, Some(&mut main_client)).await;
-        match main_client
-            .subscribe(format!("{}/{}/set", topic_prefix, "lock".to_string()), QOS)
-            .await
-        {
-            Ok(_) => info!("Subscribed to lock topic"),
-            Err(e) => {
-                error!("Failed to subscribe to lock topic: {}", e);
-            }
-        };
-        match main_client
-            .subscribe(
-                format!("{}/{}/set", topic_prefix, "aircond".to_string()),
-                QOS,
-            )
-            .await
-        {
-            Ok(_) => info!("Subscribed to aircond topic"),
-            Err(e) => {
-                error!("Failed to subscribe to aircond topic: {}", e);
-            }
-        };
-        match main_client
-            .subscribe(
-                format!("{}/{}/set", topic_prefix, "petmode".to_string()),
-                QOS,
-            )
-            .await
-        {
-            Ok(_) => info!("Subscribed to petmode topic"),
-            Err(e) => {
-                error!("Failed to subscribe to petmode topic: {}", e);
-            }
-        };
-        match main_client
-            .subscribe(
-                format!("{}/{}/set", topic_prefix, "ac_timer".to_string()),
-                QOS,
-            )
-            .await
-        {
-            Ok(_) => info!("Subscribed to ac_timer topic"),
-            Err(e) => {
-                error!("Failed to subscribe to ac_timer topic: {}", e);
-            }
-        };
-        match main_client
-            .subscribe(
-                format!("{}/{}/set", topic_prefix, "ac_temperature".to_string()),
-                QOS,
-            )
-            .await
-        {
-            Ok(_) => info!("Subscribed to ac_temperature topic"),
-            Err(e) => {
-                error!("Failed to subscribe to ac_temperature topic: {}", e);
-            }
-        };
     });
-    let (sec_client, mut sec_eventloop) = mqtt_setup().await.unwrap();
-    let client_mutex = Mutex::new(sec_client);
+    let mutex_client = MQTT_CLIENT.lock().await;
+    let client = mutex_client.as_ref().unwrap();
+    match publish_discovery(&client, &vehicle_info, &topic_prefix).await {
+        Ok(_) => {
+            info!("Discovery published");
+        }
+        Err(e) => {
+            error!("Failed to publish discovery: {}", e);
+        }
+    }
+    drop(mutex_client);
+    println!("1");
+    let switch_topic = HashMap::from([
+        ("lock".to_string(), "online".to_string()),
+        ("aircond".to_string(), "online".to_string()),
+        ("petmode".to_string(), "online".to_string()),
+    ]);
+    println!("2");
+    publish_availability(switch_topic).await;
+    println!("3");
+    let mutex_client = MQTT_CLIENT.lock().await;
+    let client = mutex_client.as_ref().unwrap();
+    match client
+        .subscribe(format!("{}/{}/set", topic_prefix, "lock".to_string()), QOS)
+        .await
+    {
+        Ok(_) => info!("Subscribed to lock topic"),
+        Err(e) => {
+            error!("Failed to subscribe to lock topic: {}", e);
+        }
+    };
+    match client
+        .subscribe(
+            format!("{}/{}/set", topic_prefix, "aircond".to_string()),
+            QOS,
+        )
+        .await
+    {
+        Ok(_) => info!("Subscribed to aircond topic"),
+        Err(e) => {
+            error!("Failed to subscribe to aircond topic: {}", e);
+        }
+    };
+    match client
+        .subscribe(
+            format!("{}/{}/set", topic_prefix, "petmode".to_string()),
+            QOS,
+        )
+        .await
+    {
+        Ok(_) => info!("Subscribed to petmode topic"),
+        Err(e) => {
+            error!("Failed to subscribe to petmode topic: {}", e);
+        }
+    };
+    match client
+        .subscribe(
+            format!("{}/{}/set", topic_prefix, "ac_timer".to_string()),
+            QOS,
+        )
+        .await
+    {
+        Ok(_) => info!("Subscribed to ac_timer topic"),
+        Err(e) => {
+            error!("Failed to subscribe to ac_timer topic: {}", e);
+        }
+    };
+    match client
+        .subscribe(
+            format!("{}/{}/set", topic_prefix, "ac_temperature".to_string()),
+            QOS,
+        )
+        .await
+    {
+        Ok(_) => info!("Subscribed to ac_temperature topic"),
+        Err(e) => {
+            error!("Failed to subscribe to ac_temperature topic: {}", e);
+        }
+    };
+    drop(mutex_client);
 
     tokio::select! {
         _ = async {
             loop {
-                match sec_eventloop.poll().await {
-                    Ok(_) => {},
-                    Err(e) => {
-                        error!("Error: {:?}", e);
-                    }
-                }
-            }
-        } => {}
-        _ = async {
-            loop {
                 update_vehicle_status().await;
                 if *MQTT_PUBLISH.lock().await {
-                    let mut client_lock = client_mutex.lock().await;
-                    publish_vehicle_status(Some(&mut client_lock)).await;
+                    publish_vehicle_status().await;
                     *MQTT_PUBLISH.lock().await = false;
-                    drop(client_lock);
                 }
                 time::sleep(Duration::from_secs(*REFRESH_INTERVAL)).await;
-            }
-        } => {}
-        _ = async {
-            let topic_prefix = format!("{}/{}_{}", &*MQTT_CONFIG.topic_prefix, brand_name, last_vin);
-            loop {
-                match eventloop.poll().await {
-                    Ok(notification) => {
-                        let payload = parse_payload(notification).await.unwrap();
-                        if payload.is_null() {
-                            continue;
-                        }
-                        let topic = payload["topic"].as_str().unwrap_or("");
-                        let re = Regex::new(format!(r"^{}\/(?<topic>\w+)\/set$", topic_prefix.clone()).as_str()).unwrap();
-                        let captures = re.captures(topic);
-                        if captures.is_none() {
-                            continue;
-                        }
-                        let captures = captures.unwrap();
-                        let capture_topic = captures.name("topic");
-                        if capture_topic.is_none() {
-                            continue;
-                        }
-                        let capture_topic = capture_topic.unwrap().as_str();
-                        let vehicle_info = VEHICLE_INFO.lock().await.clone();
-                        let vehicle_status = VEHICLE_STATUS.lock().await.clone();
-                        match capture_topic {
-                            "lock" => {
-                                let command = payload["payload"].as_str().unwrap_or("");
-                                let command = if command == "ON" && (!vehicle_status.unlock_status || DEBOUNCE_LOCK.lock().await.clone() == "lock") {
-                                    "1"
-                                } else if command == "OFF" && (vehicle_status.unlock_status || DEBOUNCE_LOCK.lock().await.clone() == "unlock") {
-                                    "0"
-                                } else {
-                                    continue;
-                                };
-                                let switch_topic = HashMap::from([
-                                    ("lock".to_string(), "offline".to_string()),
-                                ]);
-                                let mut client_lock = client_mutex.lock().await;
-                                publish_availability(switch_topic, Some(&mut client_lock)).await;
-                                *DEBOUNCE_LOCK.lock().await = if command == "1" {
-                                    "unlock".to_string()
-                                } else {
-                                    "lock".to_string()
-                                };
-                                publish_vehicle_status(Some(&mut client_lock)).await;
-                                let vehicle_info_clone = vehicle_info.clone();
-                                tokio::spawn(async move {
-                                    match send_lock_command(&vehicle_info_clone.vin, command).await {
-                                        Ok(_) => {
-                                            info!("Lock command sent");
-                                        }
-                                        Err(e) => {
-                                            error!("Failed to send lock command: {}", e);
-                                            *DEBOUNCE_LOCK.lock().await = "".to_string();
-                                        }
-                                    }
-                                });
-                                let switch_topic = HashMap::from([
-                                    ("lock".to_string(), "online".to_string()),
-                                ]);
-                                publish_vehicle_status(Some(&mut client_lock)).await;
-                                publish_availability(switch_topic, Some(&mut client_lock)).await;
-                                drop(client_lock);
-                            }
-                            "aircond" => {
-                                let command = payload["payload"].as_str().unwrap_or("");
-                                let command = if command == "ON" && (!vehicle_status.ac_status || DEBOUNCE_AC.lock().await.clone() == "off") {
-                                    "1"
-                                } else if command == "OFF" && (vehicle_status.ac_status || DEBOUNCE_AC.lock().await.clone() == "on") {
-                                    "0"
-                                } else {
-                                    continue;
-                                };
-                                let switch_topic = HashMap::from([
-                                    ("aircond".to_string(), "offline".to_string()),
-                                ]);
-                                let mut client_lock = client_mutex.lock().await;
-                                publish_availability(switch_topic, Some(&mut client_lock)).await;
-                                *DEBOUNCE_AC.lock().await = if command == "1" {
-                                    "on".to_string()
-                                } else {
-                                    "off".to_string()
-                                };
-                                publish_vehicle_status(Some(&mut client_lock)).await;
-                                let oper_time = vehicle_status.ac_time;
-                                let oper_temp = vehicle_status.ac_temp;
-                                let vehicle_info_clone = vehicle_info.clone();
-                                tokio::spawn(async move {
-                                    match send_climate_command(&vehicle_info_clone.vin, command, oper_time, oper_temp).await {
-                                        Ok(_) => {
-                                            info!("Aircond command sent");
-                                        }
-                                        Err(e) => {
-                                            error!("Failed to send aircond command: {}", e);
-                                            *DEBOUNCE_AC.lock().await = "".to_string();
-                                        }
-                                    }
-                                });
-                                let switch_topic = HashMap::from([
-                                    ("aircond".to_string(), "online".to_string()),
-                                ]);
-                                publish_vehicle_status(Some(&mut client_lock)).await;
-                                publish_availability(switch_topic, Some(&mut client_lock)).await;
-                                drop(client_lock);
-                            }
-                            "ac_timer" => {
-                                println!("{:?}", payload);
-                                let payload_str = payload["payload"].as_str();
-                                if payload_str.is_none() {
-                                    continue
-                                }
-                                let payload_i64 = payload_str.unwrap().parse::<i64>();
-                                match payload_i64 {
-                                    Ok(oper_time) => {
-                                        info!("Setting aircond timer to {}", oper_time);
-                                        let mut mut_vehicle_status = VEHICLE_STATUS.lock().await;
-                                        mut_vehicle_status.ac_time = oper_time;
-                                        fs::write(STATE_FILE, serde_json::to_string(&*mut_vehicle_status).unwrap()).unwrap();
-                                        drop(mut_vehicle_status);
-                                        let mut client_lock = client_mutex.lock().await;
-                                        publish_vehicle_status(Some(&mut client_lock)).await;
-                                        drop(client_lock);
-                                    }
-                                    Err(_) => {
-                                        error!("Invalid payload");
-                                    }
-                                }
-                            }
-                            "ac_temperature" => {
-                                let payload_str = payload["payload"].as_str();
-                                if payload_str.is_none() {
-                                    continue
-                                }
-                                let payload_i64 = payload_str.unwrap().parse::<i64>();
-                                match payload_i64 {
-                                    Ok(oper_temp) => {
-                                        info!("Setting temperature to {}", oper_temp);
-                                        let mut mut_vehicle_status = VEHICLE_STATUS.lock().await;
-                                        mut_vehicle_status.ac_temp = oper_temp;
-                                        fs::write(STATE_FILE, serde_json::to_string(&*mut_vehicle_status).unwrap()).unwrap();
-                                        drop(mut_vehicle_status);
-                                        let mut client_lock = client_mutex.lock().await;
-                                        publish_vehicle_status(Some(&mut client_lock)).await;
-                                        drop(client_lock);
-                                    }
-                                    Err(_) => {
-                                        error!("Invalid payload");
-                                    }
-                                }
-                            }
-                            "petmode" => {
-                                let command = payload["payload"].as_str().unwrap_or("");
-                                let command = if command == "ON" && (!vehicle_status.petmode || !PETMODE.lock().await.clone()) {
-                                    true
-                                } else if command == "OFF" && (vehicle_status.petmode || PETMODE.lock().await.clone()) {
-                                    false
-                                } else {
-                                    continue;
-                                };
-                                info!("Setting pet mode to {}", command);
-                                let mut mut_vehicle_status = VEHICLE_STATUS.lock().await;
-                                mut_vehicle_status.petmode = command;
-                                *PETMODE.lock().await = command;
-                                fs::write(STATE_FILE, serde_json::to_string(&*mut_vehicle_status).unwrap()).unwrap();
-                                drop(mut_vehicle_status);
-                                let mut client_lock = client_mutex.lock().await;
-                                publish_vehicle_status(Some(&mut client_lock)).await;
-                                drop(client_lock);
-                                if command {
-                                    let oper_time = 30i64;
-                                    let oper_temp = vehicle_status.ac_temp;
-                                    let vehicle_info_clone = vehicle_info.clone();
-                                    let duration = Duration::from_secs(oper_time as u64 * 60);
-                                    tokio::spawn(async move {
-                                        debug!("Starting pet mode loop");
-                                        while *PETMODE.lock().await {
-                                            while VEHICLE_STATUS.lock().await.ac_status {
-                                                debug!("AC is on, waiting for it to turn off");
-                                                update_vehicle_status().await;
-                                                time::sleep(Duration::from_secs(1)).await;
-                                            }
-                                            debug!("Turning on AC");
-                                            *DEBOUNCE_AC.lock().await = "on".to_string();
-                                            match send_climate_command(&vehicle_info_clone.vin, "1", oper_time, oper_temp).await {
-                                                Ok(_) => {
-                                                    info!("Aircond command sent");
-                                                }
-                                                Err(e) => {
-                                                    error!("Failed to send aircond command: {}", e);
-                                                    *DEBOUNCE_AC.lock().await = "".to_string();
-                                                }
-                                            }
-                                            time::sleep(duration).await;
-                                        }
-                                        debug!("Pet mode loop ended");
-                                    });
-                                } else {
-                                    debug!("Stopping pet mode loop");
-                                    let oper_time = 30i64;
-                                    let oper_temp = vehicle_status.ac_temp;
-                                    let vehicle_info_clone = vehicle_info.clone();
-                                    *DEBOUNCE_AC.lock().await = "off".to_string();
-                                    tokio::spawn(async move {
-                                        match send_climate_command(&vehicle_info_clone.vin, "0", oper_time, oper_temp).await {
-                                            Ok(_) => {
-                                                info!("Aircond command sent");
-                                            }
-                                            Err(e) => {
-                                                error!("Failed to send aircond command: {}", e);
-                                                *DEBOUNCE_AC.lock().await = "".to_string();
-                                            }
-                                        }
-                                    });
-                                }
-                            }
-                            _ => {
-                                error!("Unknown topic: {:?}", payload["topic"]);
-                            }
-                        }
-                        drop(vehicle_info);
-                        drop(vehicle_status);
-                    }
-                    Err(e) => {
-                        error!("Error: {:?}", e);
-                    }
-                }
             }
         } => {}
     }
@@ -470,6 +252,243 @@ async fn setup() {
     *MQTT_PUBLISH.lock().await = true;
 }
 
+async fn handle_event(event: rumqttc::Event) {
+    let vehicle_info = VEHICLE_INFO.lock().await.clone();
+    let vehicle_status = VEHICLE_STATUS.lock().await.clone();
+    let brand_name = vehicle_info.brand_name.clone().to_lowercase();
+    let last_vin = vehicle_info.showed_vin[15..].to_string();
+    let topic_prefix = format!("{}/{}_{}", &*MQTT_CONFIG.topic_prefix, brand_name, last_vin);
+    let payload = parse_payload(event).await.unwrap();
+    if payload.is_null() {
+        return;
+    }
+    let topic = payload["topic"].as_str().unwrap_or("");
+    let re =
+        Regex::new(format!(r"^{}\/(?<topic>\w+)\/set$", topic_prefix.clone()).as_str()).unwrap();
+    let captures = re.captures(topic);
+    if captures.is_none() {
+        return;
+    }
+    let captures = captures.unwrap();
+    let capture_topic = captures.name("topic");
+    if capture_topic.is_none() {
+        return;
+    }
+    let capture_topic = capture_topic.unwrap().as_str();
+    match capture_topic {
+        "lock" => {
+            let command = payload["payload"].as_str().unwrap_or("");
+            let command = if command == "ON"
+                && (!vehicle_status.unlock_status || DEBOUNCE_LOCK.lock().await.clone() == "lock")
+            {
+                "1"
+            } else if command == "OFF"
+                && (vehicle_status.unlock_status || DEBOUNCE_LOCK.lock().await.clone() == "unlock")
+            {
+                "0"
+            } else {
+                return;
+            };
+            let switch_topic = HashMap::from([("lock".to_string(), "offline".to_string())]);
+            publish_availability(switch_topic).await;
+            *DEBOUNCE_LOCK.lock().await = if command == "1" {
+                "unlock".to_string()
+            } else {
+                "lock".to_string()
+            };
+            publish_vehicle_status().await;
+            let vehicle_info_clone = vehicle_info.clone();
+            tokio::spawn(async move {
+                match send_lock_command(&vehicle_info_clone.vin, command).await {
+                    Ok(_) => {
+                        info!("Lock command sent");
+                    }
+                    Err(e) => {
+                        error!("Failed to send lock command: {}", e);
+                        *DEBOUNCE_LOCK.lock().await = "".to_string();
+                    }
+                }
+            });
+            let switch_topic = HashMap::from([("lock".to_string(), "online".to_string())]);
+            publish_vehicle_status().await;
+            publish_availability(switch_topic).await;
+        }
+        "aircond" => {
+            let command = payload["payload"].as_str().unwrap_or("");
+            let command = if command == "ON"
+                && (!vehicle_status.ac_status || DEBOUNCE_AC.lock().await.clone() == "off")
+            {
+                "1"
+            } else if command == "OFF"
+                && (vehicle_status.ac_status || DEBOUNCE_AC.lock().await.clone() == "on")
+            {
+                "0"
+            } else {
+                return;
+            };
+            let switch_topic = HashMap::from([("aircond".to_string(), "offline".to_string())]);
+            publish_availability(switch_topic).await;
+            *DEBOUNCE_AC.lock().await = if command == "1" {
+                "on".to_string()
+            } else {
+                "off".to_string()
+            };
+            publish_vehicle_status().await;
+            let oper_time = vehicle_status.ac_time;
+            let oper_temp = vehicle_status.ac_temp;
+            let vehicle_info_clone = vehicle_info.clone();
+            tokio::spawn(async move {
+                match send_climate_command(&vehicle_info_clone.vin, command, oper_time, oper_temp)
+                    .await
+                {
+                    Ok(_) => {
+                        info!("Aircond command sent");
+                    }
+                    Err(e) => {
+                        error!("Failed to send aircond command: {}", e);
+                        *DEBOUNCE_AC.lock().await = "".to_string();
+                    }
+                }
+            });
+            let switch_topic = HashMap::from([("aircond".to_string(), "online".to_string())]);
+            publish_vehicle_status().await;
+            publish_availability(switch_topic).await;
+        }
+        "ac_timer" => {
+            println!("{:?}", payload);
+            let payload_str = payload["payload"].as_str();
+            if payload_str.is_none() {
+                return;
+            }
+            let payload_i64 = payload_str.unwrap().parse::<i64>();
+            match payload_i64 {
+                Ok(oper_time) => {
+                    info!("Setting aircond timer to {}", oper_time);
+                    let mut mut_vehicle_status = VEHICLE_STATUS.lock().await;
+                    mut_vehicle_status.ac_time = oper_time;
+                    fs::write(
+                        STATE_FILE,
+                        serde_json::to_string(&*mut_vehicle_status).unwrap(),
+                    )
+                    .unwrap();
+                    drop(mut_vehicle_status);
+                    publish_vehicle_status().await;
+                }
+                Err(_) => {
+                    error!("Invalid payload");
+                }
+            }
+        }
+        "ac_temperature" => {
+            let payload_str = payload["payload"].as_str();
+            if payload_str.is_none() {
+                return;
+            }
+            let payload_i64 = payload_str.unwrap().parse::<i64>();
+            match payload_i64 {
+                Ok(oper_temp) => {
+                    info!("Setting temperature to {}", oper_temp);
+                    let mut mut_vehicle_status = VEHICLE_STATUS.lock().await;
+                    mut_vehicle_status.ac_temp = oper_temp;
+                    fs::write(
+                        STATE_FILE,
+                        serde_json::to_string(&*mut_vehicle_status).unwrap(),
+                    )
+                    .unwrap();
+                    drop(mut_vehicle_status);
+                    publish_vehicle_status().await;
+                }
+                Err(_) => {
+                    error!("Invalid payload");
+                }
+            }
+        }
+        "petmode" => {
+            let command = payload["payload"].as_str().unwrap_or("");
+            let command = if command == "ON"
+                && (!vehicle_status.petmode || !PETMODE.lock().await.clone())
+            {
+                true
+            } else if command == "OFF" && (vehicle_status.petmode || PETMODE.lock().await.clone()) {
+                false
+            } else {
+                return;
+            };
+            info!("Setting pet mode to {}", command);
+            let mut mut_vehicle_status = VEHICLE_STATUS.lock().await;
+            mut_vehicle_status.petmode = command;
+            *PETMODE.lock().await = command;
+            fs::write(
+                STATE_FILE,
+                serde_json::to_string(&*mut_vehicle_status).unwrap(),
+            )
+            .unwrap();
+            drop(mut_vehicle_status);
+            publish_vehicle_status().await;
+            if command {
+                let oper_time = 30i64;
+                let oper_temp = vehicle_status.ac_temp;
+                let vehicle_info_clone = vehicle_info.clone();
+                let duration = Duration::from_secs(oper_time as u64 * 60);
+                tokio::spawn(async move {
+                    debug!("Starting pet mode loop");
+                    while *PETMODE.lock().await {
+                        while VEHICLE_STATUS.lock().await.ac_status {
+                            debug!("AC is on, waiting for it to turn off");
+                            update_vehicle_status().await;
+                            time::sleep(Duration::from_secs(1)).await;
+                        }
+                        debug!("Turning on AC");
+                        *DEBOUNCE_AC.lock().await = "on".to_string();
+                        match send_climate_command(
+                            &vehicle_info_clone.vin,
+                            "1",
+                            oper_time,
+                            oper_temp,
+                        )
+                        .await
+                        {
+                            Ok(_) => {
+                                info!("Aircond command sent");
+                            }
+                            Err(e) => {
+                                error!("Failed to send aircond command: {}", e);
+                                *DEBOUNCE_AC.lock().await = "".to_string();
+                            }
+                        }
+                        time::sleep(duration).await;
+                    }
+                    debug!("Pet mode loop ended");
+                });
+            } else {
+                debug!("Stopping pet mode loop");
+                let oper_time = 30i64;
+                let oper_temp = vehicle_status.ac_temp;
+                let vehicle_info_clone = vehicle_info.clone();
+                *DEBOUNCE_AC.lock().await = "off".to_string();
+                tokio::spawn(async move {
+                    match send_climate_command(&vehicle_info_clone.vin, "0", oper_time, oper_temp)
+                        .await
+                    {
+                        Ok(_) => {
+                            info!("Aircond command sent");
+                        }
+                        Err(e) => {
+                            error!("Failed to send aircond command: {}", e);
+                            *DEBOUNCE_AC.lock().await = "".to_string();
+                        }
+                    }
+                });
+            }
+        }
+        _ => {
+            error!("Unknown topic: {:?}", payload["topic"]);
+        }
+    }
+    drop(vehicle_info);
+    drop(vehicle_status);
+}
+
 async fn update_vehicle_status() {
     info!("Updating vehicle status");
     let vehicle_info = VEHICLE_INFO.lock().await;
@@ -491,7 +510,7 @@ async fn update_vehicle_status() {
     };
 }
 
-async fn publish_vehicle_status(client: Option<&mut rumqttc::AsyncClient>) {
+async fn publish_vehicle_status() {
     let vehicle_info = VEHICLE_INFO.lock().await.clone();
     let brand_name = vehicle_info.brand_name.clone().to_lowercase();
     let last_vin = vehicle_info.showed_vin[15..].to_string();
@@ -527,9 +546,11 @@ async fn publish_vehicle_status(client: Option<&mut rumqttc::AsyncClient>) {
     } else {
         *DEBOUNCE_AC.lock().await = "".to_string();
     }
+    let mutex_client = MQTT_CLIENT.lock().await;
+    let client = mutex_client.as_ref();
     if client.is_some() {
-        let mut client = client.unwrap();
-        match publish_state(&mut client, &vehicle_info, &vehicle_status, &topic_prefix).await {
+        let client = client.unwrap();
+        match publish_state(&client, &vehicle_info, &vehicle_status, &topic_prefix).await {
             Ok(_) => {
                 info!("State published");
             }
@@ -569,17 +590,18 @@ async fn publish_vehicle_status(client: Option<&mut rumqttc::AsyncClient>) {
             }
         });
     }
+    drop(mutex_client);
 }
 
-async fn publish_availability(
-    topic: HashMap<String, String>,
-    client: Option<&mut rumqttc::AsyncClient>,
-) {
+async fn publish_availability(topic: HashMap<String, String>) {
     let topic_count = topic.len();
     let vehicle_info = VEHICLE_INFO.lock().await.clone();
     let brand_name = vehicle_info.brand_name.clone().to_lowercase();
     let last_vin = vehicle_info.showed_vin[15..].to_string();
     let topic_prefix = format!("{}/{}_{}", &*MQTT_CONFIG.topic_prefix, brand_name, last_vin);
+    let mutex_client = MQTT_CLIENT.lock().await;
+    let client = mutex_client.as_ref();
+    println!("1");
     if client.is_some() {
         let client = client.unwrap();
         for (topic, availability) in topic {
@@ -642,6 +664,7 @@ async fn publish_availability(
             }
         });
     }
+    drop(mutex_client);
 }
 
 async fn read_vehicle_configuration() -> Result<VehicleInfo, ()> {
