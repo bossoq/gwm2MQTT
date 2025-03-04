@@ -61,7 +61,6 @@ pub async fn run() {
         loop {
             match eventloop.poll().await {
                 Ok(event) => {
-                    println!("{:?}", event);
                     handle_event(event).await;
                 }
                 Err(e) => {
