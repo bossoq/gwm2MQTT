@@ -80,15 +80,12 @@ pub async fn run() {
         }
     }
     drop(mutex_client);
-    println!("1");
     let switch_topic = HashMap::from([
         ("lock".to_string(), "online".to_string()),
         ("aircond".to_string(), "online".to_string()),
         ("petmode".to_string(), "online".to_string()),
     ]);
-    println!("2");
     publish_availability(switch_topic).await;
-    println!("3");
     let mutex_client = MQTT_CLIENT.lock().await;
     let client = mutex_client.as_ref().unwrap();
     match client
@@ -354,7 +351,6 @@ async fn handle_event(event: rumqttc::Event) {
             publish_availability(switch_topic).await;
         }
         "ac_timer" => {
-            println!("{:?}", payload);
             let payload_str = payload["payload"].as_str();
             if payload_str.is_none() {
                 return;
@@ -600,7 +596,6 @@ async fn publish_availability(topic: HashMap<String, String>) {
     let topic_prefix = format!("{}/{}_{}", &*MQTT_CONFIG.topic_prefix, brand_name, last_vin);
     let mutex_client = MQTT_CLIENT.lock().await;
     let client = mutex_client.as_ref();
-    println!("1");
     if client.is_some() {
         let client = client.unwrap();
         for (topic, availability) in topic {
