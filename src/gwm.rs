@@ -1,6 +1,6 @@
 use chrono::prelude::*;
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
-use log::{error, info};
+use log::{debug, error, info};
 use md5::compute;
 use rand::prelude::*;
 use regex::Regex;
@@ -556,7 +556,8 @@ pub async fn send_climate_command(
         );
         return Err("Failed to send climate command".to_string());
     }
-    loop {
+    let mut i = 0;
+    while i < 10 {
         match get_remote_cmd_status(vin, &seq_no, "0x04").await {
             Ok(status) => {
                 if status {
@@ -568,7 +569,12 @@ pub async fn send_climate_command(
             }
             Err(e) => return Err(e),
         }
+        i += 1;
+        debug!("Waiting for climate command to be sent");
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
     }
+    error!("Failed to send climate command");
+    Err("Failed to send climate command".to_string())
 }
 
 pub async fn send_lock_command(vin: &str, switch_order: &str) -> Result<bool, String> {
@@ -624,7 +630,8 @@ pub async fn send_lock_command(vin: &str, switch_order: &str) -> Result<bool, St
         );
         return Err("Failed to send lock command".to_string());
     }
-    loop {
+    let mut i = 0;
+    while i < 10 {
         match get_remote_cmd_status(vin, &seq_no, "0x05").await {
             Ok(status) => {
                 if status {
@@ -636,7 +643,12 @@ pub async fn send_lock_command(vin: &str, switch_order: &str) -> Result<bool, St
             }
             Err(e) => return Err(e),
         }
+        i += 1;
+        debug!("Waiting for lock command to be sent");
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
     }
+    error!("Failed to send lock command");
+    Err("Failed to send lock command".to_string())
 }
 
 async fn get_remote_cmd_status(vin: &str, seq_no: &str, remote_type: &str) -> Result<bool, String> {
