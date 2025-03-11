@@ -144,7 +144,6 @@ pub struct VehicleStatus {
     pub charging_status: bool,        // stop 0 start 1 awaiting 2 finish 3 error 6 true if charging
     pub charging_status_desc: String, // stop 0 start 1 awaiting 2 finish 3 error 6 true if charging
     pub charging_port_plugged: bool,  // unplugged 0 plugged 1 true if plugged
-    pub schedule_charge: bool,        // off 0 on 1 true if on
     pub ac_status: bool,              // off 0 on 1 true if on
     pub air_filter_status: bool,      // off 0 on 1 true if on
     pub unlock_status: bool,          // lock 0 unlock 1 true if unlocked
@@ -195,7 +194,6 @@ impl Default for VehicleStatus {
             charging_status: false,
             charging_status_desc: "".to_string(),
             charging_port_plugged: false,
-            schedule_charge: false,
             ac_status: false,
             air_filter_status: false,
             unlock_status: false,
@@ -730,7 +728,6 @@ fn parse_vehicle_status(vin: &str, data: &Value) -> VehicleStatus {
             .unwrap_or(&"Unknown Mapping")
             .to_string(),
         charging_port_plugged: items["2042082"].as_str().unwrap_or("0") == "1",
-        schedule_charge: items["2013023"].as_str().unwrap_or("0") == "1",
         ac_status: items["2202001"].as_str().unwrap_or("0") == "1",
         air_filter_status: items["2078020"].as_str().unwrap_or("0") == "1",
         unlock_status: items["2208001"].as_str().unwrap_or("0") == "1",

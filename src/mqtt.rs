@@ -458,25 +458,6 @@ pub async fn publish_discovery(
     payload_map.insert(
         format!(
             "{}/binary_sensor/{}_{}/config",
-            &*MQTT_CONFIG.discovery_topic, &prefix, "schedule_charge"
-        ),
-        json!({
-            "availability": availability,
-            "name": format!("{} Schedule Charge", vehicle_info.showed_vin),
-            "unique_id": format!("{}_schedule_charge", prefix),
-            "icon": "mdi:timer",
-            "device_class": "power",
-            "state_topic": format!("{}/state", topic_prefix),
-            "value_template": "{{ value_json.schedule_charge if (value_json is defined and value_json.schedule_charge is defined) else 'OFF' }}",
-            "json_attributes_topic": attributes_topic.clone(),
-            "json_attributes_template": "{{ value }}",
-            "device": device,
-        })
-        .to_string()
-    );
-    payload_map.insert(
-        format!(
-            "{}/binary_sensor/{}_{}/config",
             &*MQTT_CONFIG.discovery_topic, &prefix, "ac_status"
         ),
         json!({
@@ -1095,11 +1076,6 @@ pub async fn publish_state(
             "charging_status": vehicle_status.charging_status,
             "charging_status_desc": vehicle_status.charging_status_desc,
             "charging_port_plugged": if vehicle_status.charging_port_plugged {
-                "ON"
-            } else {
-                "OFF"
-            },
-            "schedule_charge": if vehicle_status.schedule_charge {
                 "ON"
             } else {
                 "OFF"
