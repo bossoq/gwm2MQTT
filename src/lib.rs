@@ -2,7 +2,9 @@
 mod gwm;
 mod mqtt;
 
-use gwm::{check_token, get_vehicle_status, get_vehicles, send_climate_command, send_lock_command};
+use gwm::{
+    check_token, get_vehicle_status, get_vehicles, login, send_climate_command, send_lock_command,
+};
 use gwm::{VehicleInfo, VehicleStatus};
 use log::{debug, error, info};
 use mqtt::{
@@ -10,19 +12,18 @@ use mqtt::{
 };
 use regex::Regex;
 use serde_json;
-use std::{collections::HashMap, env::var, fs, sync::LazyLock, time::Duration};
+use std::{collections::HashMap, fs, sync::LazyLock, time::Duration};
 use tokio::{sync::Mutex, time};
 
-const CONFIG_FILE: &str = "data/configuration.json";
-const STATE_FILE: &str = "data/state.json";
+const CONFIG_FILE: &str = "/opt/gwm2mqtt/configuration.json";
+const STATE_FILE: &str = "/opt/gwm2mqtt/state.json";
 static REFRESH_INTERVAL: LazyLock<u64> = LazyLock::new(|| {
-    var("REFRESH_INTERVAL")
-        .unwrap_or("10".to_string())
+    option_env!("REFRESH_INTERVAL")
+        .unwrap_or("10")
         .parse()
         .unwrap_or(10)
 });
-static VEHICLE_VIN: LazyLock<String> =
-    LazyLock::new(|| var("VEHICLE_VIN").unwrap_or("".to_string()));
+static VEHICLE_VIN: LazyLock<&str> = LazyLock::new(|| option_env!("VEHICLE_VIN").unwrap_or(""));
 static VEHICLE_INFO: LazyLock<Mutex<VehicleInfo>> =
     LazyLock::new(|| Mutex::new(VehicleInfo::default()));
 static VEHICLE_STATUS: LazyLock<Mutex<VehicleStatus>> = LazyLock::new(|| {
@@ -162,6 +163,18 @@ pub async fn run() {
 }
 
 async fn setup() {
+    match login().await {
+        Ok(result) => {
+            if result {
+                info!("Login successfully");
+            } else {
+                panic!("Cannot Login");
+            }
+        }
+        Err(e) => {
+            panic!("Failed to login: {}", e);
+        }
+    }
     let (token_valid, _) = check_token().await;
     if !token_valid {
         panic!("Token is invalid");

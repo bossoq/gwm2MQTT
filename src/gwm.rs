@@ -8,14 +8,18 @@ use reqwest::{header::HeaderMap, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
-use std::{collections::HashMap, env::var, fs, sync::LazyLock};
+use std::{collections::HashMap, sync::LazyLock};
 use tokio::sync::Mutex;
 use url::Url;
 use urlencoding::encode;
 use uuid::Uuid;
 
-const CRED_FILE: &str = "data/credentials.json";
+const EMAIL: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("EMAIL"));
+const PASSWORD: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("PASSWORD"));
+const PIN: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("PIN"));
+// const CRED_FILE: &str = "/opt/gwm2mqtt/credentials.json";
 const BASEURL: &str = "https://ap-h5-gateway.gwmcloud.com/app-api/api/";
+const LOGIN: &str = "v1.0/userAuth/loginAccount";
 const REFRESHTOKEN: &str = "v1.0/userAuth/refreshToken";
 const ACQUIREVEHICLES: &str = "v1.0/vehicle/acquireVehicles";
 const GETVEHICLESTATUS: &str = "v2.0/vehicle/getLastStatus";
@@ -66,32 +70,43 @@ impl Credentials {
         }
     }
 }
-static CREDENTIALS: LazyLock<Mutex<Credentials>> = LazyLock::new(|| {
-    let access_token = var("ACCESS_TOKEN");
-    let refresh_token = var("REFRESH_TOKEN");
-    let pin = var("PIN");
-    if access_token.is_ok() && refresh_token.is_ok() && pin.is_ok() {
-        return Mutex::new(Credentials::new(
-            &access_token.unwrap(),
-            &refresh_token.unwrap(),
-            &format!("{:X}", compute(pin.unwrap())).to_ascii_lowercase(),
-        ));
-    } else {
-        match fs::read_to_string(CRED_FILE) {
-            Ok(content) => match serde_json::from_str::<Credentials>(&content) {
-                Ok(creds) => Mutex::new(creds),
-                Err(e) => {
-                    error!("Failed to parse credentials: {}", e);
-                    panic!("Failed to parse credentials");
-                }
-            },
-            Err(_) => {
-                error!("No credentials found, exiting");
-                panic!("No credentials found");
-            }
+impl Default for Credentials {
+    fn default() -> Credentials {
+        Credentials {
+            access_token: "".to_string(),
+            refresh_token: "".to_string(),
+            md5_pin: "".to_string(),
         }
     }
-});
+}
+static CREDENTIALS: LazyLock<Mutex<Credentials>> =
+    LazyLock::new(|| Mutex::new(Credentials::default()));
+// static CREDENTIALS: LazyLock<Mutex<Credentials>> = LazyLock::new(|| {
+//     let access_token = var("ACCESS_TOKEN");
+//     let refresh_token = var("REFRESH_TOKEN");
+//     let pin = var("PIN");
+//     if access_token.is_ok() && refresh_token.is_ok() && pin.is_ok() {
+//         return Mutex::new(Credentials::new(
+//             &access_token.unwrap(),
+//             &refresh_token.unwrap(),
+//             &format!("{:X}", compute(pin.unwrap())).to_ascii_lowercase(),
+//         ));
+//     } else {
+//         match fs::read_to_string(CRED_FILE) {
+//             Ok(content) => match serde_json::from_str::<Credentials>(&content) {
+//                 Ok(creds) => Mutex::new(creds),
+//                 Err(e) => {
+//                     error!("Failed to parse credentials: {}", e);
+//                     panic!("Failed to parse credentials");
+//                 }
+//             },
+//             Err(_) => {
+//                 error!("No credentials found, exiting");
+//                 panic!("No credentials found");
+//             }
+//         }
+//     }
+// });
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct AccessToken {
@@ -297,6 +312,70 @@ fn sign_calc_post(payload: &Value, url: &Url, headers: HeaderMap) -> HeaderMap {
     headers
 }
 
+pub async fn login() -> Result<bool, String> {
+    info!("Logging in using email");
+    let email = EMAIL.unwrap_or_else(|| {
+        panic!("Missing EMAIL var");
+    });
+    let password = PASSWORD.unwrap_or_else(|| {
+        panic!("Missing PASSWORD var");
+    });
+    let url = Url::parse(BASEURL).unwrap().join(LOGIN).unwrap();
+    let mut headers = STD_HEADER.clone();
+    headers.insert("accesstoken", "".parse().unwrap());
+    let payload = json!({
+        "account": email,
+        "password": password,
+        "agreement": ["1", "2"],
+        "appType": 0,
+        "country": "TH",
+        "deviceId": DEVICE_ID,
+        "model": "GWM2MQTT",
+        "pushToken": "",
+        "type": 1,
+        "isEncrypt": false
+    });
+    let headers = sign_calc_post(&payload, &url, headers);
+    let client = Client::new();
+    let res = match client
+        .post(url)
+        .headers(headers)
+        .json(&payload)
+        .send()
+        .await
+    {
+        Ok(res) => res,
+        Err(e) => {
+            error!("Failed to login: {}", e);
+            return Err("Failed to login".to_string());
+        }
+    };
+    let res = match res.json::<serde_json::Value>().await {
+        Ok(res) => res,
+        Err(e) => {
+            error!("Failed to parse response: {}", e);
+            return Err("Failed to parse response".to_string());
+        }
+    };
+    if res["code"] != "000000".to_string() {
+        error!(
+            "Failed to login: {}",
+            res["description"].as_str().unwrap_or("Unknown error")
+        );
+        return Ok(false);
+    }
+    let access_token = res["data"]["accessToken"].as_str().unwrap();
+    let refresh_token = res["data"]["refreshToken"].as_str().unwrap();
+    let mut creds = CREDENTIALS.lock().await;
+    let md5pin = if PIN.unwrap_or("") != "" {
+        format!("{:X}", compute(PIN.unwrap())).to_ascii_lowercase()
+    } else {
+        "".to_string()
+    };
+    *creds = Credentials::new(access_token, refresh_token, &md5pin);
+    Ok(true)
+}
+
 pub async fn check_token() -> (bool, bool) {
     info!("Check Token Validity");
     let creds = CREDENTIALS.lock().await;
@@ -401,7 +480,7 @@ pub async fn get_accesstoken() -> Result<String, String> {
     let refresh_token = res["data"]["refreshToken"].as_str().unwrap();
     let new_credentials = Credentials::new(access_token, refresh_token, &creds.md5_pin);
     *creds = new_credentials.clone();
-    fs::write(CRED_FILE, serde_json::to_string(&new_credentials).unwrap()).unwrap();
+    // fs::write(CRED_FILE, serde_json::to_string(&new_credentials).unwrap()).unwrap();
     info!("Access token refreshed");
     Ok(access_token.to_string())
 }
@@ -504,6 +583,9 @@ pub async fn send_climate_command(
         Err(e) => return Err(e),
     };
     let md5_pin = CREDENTIALS.lock().await.md5_pin.clone();
+    if md5_pin.is_empty() {
+        return Err("No PIN set".to_string());
+    }
     let url = Url::parse(BASEURL).unwrap().join(SENDREMOTECMD).unwrap();
     let seq_no = format!("{}1234", Uuid::new_v4().to_string().replace("-", ""));
     let mut headers = STD_HEADER.clone();
@@ -582,6 +664,9 @@ pub async fn send_lock_command(vin: &str, switch_order: &str) -> Result<bool, St
         Err(e) => return Err(e),
     };
     let md5_pin = CREDENTIALS.lock().await.md5_pin.clone();
+    if md5_pin.is_empty() {
+        return Err("No PIN set".to_string());
+    }
     let url = Url::parse(BASEURL).unwrap().join(SENDREMOTECMD).unwrap();
     let seq_no = format!("{}1234", Uuid::new_v4().to_string().replace("-", ""));
     let mut headers = STD_HEADER.clone();

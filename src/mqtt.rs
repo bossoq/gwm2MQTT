@@ -3,7 +3,7 @@ use rand::prelude::*;
 use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, QoS};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{collections::HashMap, env::var, fs, sync::LazyLock, time::Duration};
+use std::{collections::HashMap, fs, sync::LazyLock, time::Duration};
 
 use crate::gwm;
 
@@ -18,22 +18,22 @@ pub struct MQTTConfiguration {
     pub topic_prefix: String,
 }
 
-const MQTT_CONFIG_FILE: &str = "data/mqtt.json";
+const MQTT_CONFIG_FILE: &str = "/opt/gwm2mqtt/mqtt.json";
 pub static MQTT_CONFIG: LazyLock<MQTTConfiguration> = LazyLock::new(|| {
-    let mqtt_broker = var("MQTT_BROKER");
-    let mqtt_port = var("MQTT_PORT");
-    let mqtt_user = var("MQTT_USER");
-    let mqtt_password = var("MQTT_PASSWORD");
-    let mqtt_discovery_topic = var("MQTT_DISCOVERY_TOPIC");
-    let mqtt_topic_prefix = var("MQTT_TOPIC_PREFIX");
-    if mqtt_broker.is_ok() && mqtt_port.is_ok() {
+    let mqtt_broker = option_env!("MQTT_BROKER");
+    let mqtt_port = option_env!("MQTT_PORT");
+    let mqtt_user = option_env!("MQTT_USER");
+    let mqtt_password = option_env!("MQTT_PASSWORD");
+    let mqtt_discovery_topic = option_env!("MQTT_DISCOVERY_TOPIC");
+    let mqtt_topic_prefix = option_env!("MQTT_TOPIC_PREFIX");
+    if mqtt_broker.is_some() && mqtt_port.is_some() {
         let mqtt_config = MQTTConfiguration {
-            broker: mqtt_broker.unwrap(),
-            port: mqtt_port.unwrap().parse().unwrap_or(1883),
-            user: mqtt_user.unwrap_or("".to_string()),
-            password: mqtt_password.unwrap_or("".to_string()),
-            discovery_topic: mqtt_discovery_topic.unwrap_or("homeassistant".to_string()),
-            topic_prefix: mqtt_topic_prefix.unwrap_or("gwm2mqtt".to_string()),
+            broker: mqtt_broker.unwrap_or("").to_string(),
+            port: mqtt_port.unwrap_or("1883").parse().unwrap_or(1883),
+            user: mqtt_user.unwrap_or("").to_string(),
+            password: mqtt_password.unwrap_or("").to_string(),
+            discovery_topic: mqtt_discovery_topic.unwrap_or("homeassistant").to_string(),
+            topic_prefix: mqtt_topic_prefix.unwrap_or("gwm2mqtt").to_string(),
         };
         fs::write(
             MQTT_CONFIG_FILE,

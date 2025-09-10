@@ -1,7 +1,7 @@
 const TRIGGER_FILE_SIZE: u64 = 10 * 1024 * 1024;
 const LOG_FILE_COUNT: u32 = 10;
-const FILE_PATH: &str = "data/logs/app.log";
-const ARCHIVE_PATTERN: &str = "data/logs/app.{}.log";
+const FILE_PATH: &str = "/opt/gwm2mqtt/logs/app.log";
+const ARCHIVE_PATTERN: &str = "/opt/gwm2mqtt/logs/app.{}.log";
 
 use log::{error, info, LevelFilter, SetLoggerError};
 use log4rs::{
