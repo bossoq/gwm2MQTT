@@ -806,7 +806,11 @@ fn parse_vehicle_status(vin: &str, data: &Value) -> VehicleStatus {
         mileage: items["2103010"].as_i64().unwrap_or(0),
         soc: items["2013021"].as_i64().unwrap_or(0),
         range: items["2011007"].as_i64().unwrap_or(0),
-        charge_time: items["2013022"].as_i64().unwrap_or(0),
+        charge_time: items["2013022"]
+            .as_str()
+            .unwrap_or("0")
+            .parse::<i64>()
+            .unwrap_or(0),
         charging_status: items["2041142"].as_str().unwrap_or("0") == "1",
         charging_status_desc: charge_status_desc
             .get(&items["2041142"].as_str().unwrap_or("0"))
