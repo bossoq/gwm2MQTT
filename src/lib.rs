@@ -51,7 +51,9 @@ static MQTT_CLIENT: LazyLock<Mutex<Option<rumqttc::AsyncClient>>> =
 
 #[tokio::main]
 pub async fn run() {
-    let (main_client, mut eventloop) = mqtt_setup().await.unwrap();
+    let (main_client, mut eventloop) = mqtt_setup().await.unwrap_or_else(|e| {
+        panic!("Failed to set up MQTT client: {}", e);
+    });
     *MQTT_CLIENT.lock().await = Some(main_client);
     setup().await;
     let vehicle_info = VEHICLE_INFO.lock().await.clone();
@@ -70,83 +72,89 @@ pub async fn run() {
             }
         }
     });
-    let mutex_client = MQTT_CLIENT.lock().await;
-    let client = mutex_client.as_ref().unwrap();
-    match publish_discovery(&client, &vehicle_info, &topic_prefix).await {
-        Ok(_) => {
-            info!("Discovery published");
-        }
-        Err(e) => {
-            error!("Failed to publish discovery: {}", e);
+    {
+        let mutex_client = MQTT_CLIENT.lock().await;
+        let client = mutex_client.as_ref().unwrap_or_else(|| {
+            panic!("MQTT client is not initialized");
+        });
+        match publish_discovery(&client, &vehicle_info, &topic_prefix).await {
+            Ok(_) => {
+                info!("Discovery published");
+            }
+            Err(e) => {
+                error!("Failed to publish discovery: {}", e);
+            }
         }
     }
-    drop(mutex_client);
     let switch_topic = HashMap::from([
         ("lock".to_string(), "online".to_string()),
         ("aircond".to_string(), "online".to_string()),
         ("petmode".to_string(), "online".to_string()),
     ]);
     publish_availability(switch_topic).await;
-    let mutex_client = MQTT_CLIENT.lock().await;
-    let client = mutex_client.as_ref().unwrap();
-    match client
-        .subscribe(format!("{}/{}/set", topic_prefix, "lock".to_string()), QOS)
-        .await
     {
-        Ok(_) => info!("Subscribed to lock topic"),
-        Err(e) => {
-            error!("Failed to subscribe to lock topic: {}", e);
-        }
-    };
-    match client
-        .subscribe(
-            format!("{}/{}/set", topic_prefix, "aircond".to_string()),
-            QOS,
-        )
-        .await
-    {
-        Ok(_) => info!("Subscribed to aircond topic"),
-        Err(e) => {
-            error!("Failed to subscribe to aircond topic: {}", e);
-        }
-    };
-    match client
-        .subscribe(
-            format!("{}/{}/set", topic_prefix, "petmode".to_string()),
-            QOS,
-        )
-        .await
-    {
-        Ok(_) => info!("Subscribed to petmode topic"),
-        Err(e) => {
-            error!("Failed to subscribe to petmode topic: {}", e);
-        }
-    };
-    match client
-        .subscribe(
-            format!("{}/{}/set", topic_prefix, "ac_timer".to_string()),
-            QOS,
-        )
-        .await
-    {
-        Ok(_) => info!("Subscribed to ac_timer topic"),
-        Err(e) => {
-            error!("Failed to subscribe to ac_timer topic: {}", e);
-        }
-    };
-    match client
-        .subscribe(
-            format!("{}/{}/set", topic_prefix, "ac_temperature".to_string()),
-            QOS,
-        )
-        .await
-    {
-        Ok(_) => info!("Subscribed to ac_temperature topic"),
-        Err(e) => {
-            error!("Failed to subscribe to ac_temperature topic: {}", e);
-        }
-    };
-    drop(mutex_client);
+        let mutex_client = MQTT_CLIENT.lock().await;
+        let client = mutex_client.as_ref().unwrap_or_else(|| {
+            panic!("MQTT client is not initialized");
+        });
+        match client
+            .subscribe(format!("{}/{}/set", topic_prefix, "lock".to_string()), QOS)
+            .await
+        {
+            Ok(_) => info!("Subscribed to lock topic"),
+            Err(e) => {
+                error!("Failed to subscribe to lock topic: {}", e);
+            }
+        };
+        match client
+            .subscribe(
+                format!("{}/{}/set", topic_prefix, "aircond".to_string()),
+                QOS,
+            )
+            .await
+        {
+            Ok(_) => info!("Subscribed to aircond topic"),
+            Err(e) => {
+                error!("Failed to subscribe to aircond topic: {}", e);
+            }
+        };
+        match client
+            .subscribe(
+                format!("{}/{}/set", topic_prefix, "petmode".to_string()),
+                QOS,
+            )
+            .await
+        {
+            Ok(_) => info!("Subscribed to petmode topic"),
+            Err(e) => {
+                error!("Failed to subscribe to petmode topic: {}", e);
+            }
+        };
+        match client
+            .subscribe(
+                format!("{}/{}/set", topic_prefix, "ac_timer".to_string()),
+                QOS,
+            )
+            .await
+        {
+            Ok(_) => info!("Subscribed to ac_timer topic"),
+            Err(e) => {
+                error!("Failed to subscribe to ac_timer topic: {}", e);
+            }
+        };
+        match client
+            .subscribe(
+                format!("{}/{}/set", topic_prefix, "ac_temperature".to_string()),
+                QOS,
+            )
+            .await
+        {
+            Ok(_) => info!("Subscribed to ac_temperature topic"),
+            Err(e) => {
+                error!("Failed to subscribe to ac_temperature topic: {}", e);
+            }
+        };
+    }
 
     tokio::select! {
         _ = async {
@@ -241,7 +249,17 @@ async fn setup() {
             }
         }
     }
-    fs::write(CONFIG_FILE, serde_json::to_string(&vehicle_info).unwrap()).unwrap();
+    match fs::write(
+        CONFIG_FILE,
+        serde_json::to_string(&vehicle_info).unwrap_or_else(|e| {
+            panic!("Failed to write configuration file: {}", e);
+        }),
+    ) {
+        Ok(_) => {}
+        Err(e) => {
+            panic!("Failed to write configuration file: {}", e);
+        }
+    }
     let mut global_vehicle_info = VEHICLE_INFO.lock().await;
     *global_vehicle_info = vehicle_info.clone();
     let full_name = format!(
@@ -256,7 +274,17 @@ async fn setup() {
     } else {
         info!("State VIN does not match. Resetting vehicle status");
         *vehicle_status = VehicleStatus::default();
-        fs::write(STATE_FILE, serde_json::to_string(&*vehicle_status).unwrap()).unwrap();
+        match fs::write(
+            STATE_FILE,
+            serde_json::to_string(&*vehicle_status).unwrap_or_else(|e| {
+                panic!("Failed to write state file: {}", e);
+            }),
+        ) {
+            Ok(_) => {}
+            Err(e) => {
+                panic!("Failed to write state file: {}", e);
+            }
+        }
     }
     *MQTT_PUBLISH.lock().await = true;
 }
@@ -267,23 +295,30 @@ async fn handle_event(event: rumqttc::Event) {
     let brand_name = vehicle_info.brand_name.clone().to_lowercase();
     let last_vin = vehicle_info.showed_vin[15..].to_string();
     let topic_prefix = format!("{}/{}_{}", &*MQTT_CONFIG.topic_prefix, brand_name, last_vin);
-    let payload = parse_payload(event).await.unwrap();
+    let payload = parse_payload(event).await.unwrap_or_else(|e| {
+        error!("Failed to parse payload: {}", e);
+        serde_json::Value::Null
+    });
     if payload.is_null() {
         return;
     }
     let topic = payload["topic"].as_str().unwrap_or("");
-    let re =
-        Regex::new(format!(r"^{}\/(?<topic>\w+)\/set$", topic_prefix.clone()).as_str()).unwrap();
+    let re = Regex::new(format!(r"^{}\/(?<topic>\w+)\/set$", topic_prefix.clone()).as_str())
+        .unwrap_or_else(|e| {
+            panic!("Failed to create regex: {}", e);
+        });
     let captures = re.captures(topic);
     if captures.is_none() {
         return;
     }
-    let captures = captures.unwrap();
+    let captures = captures.unwrap_or_else(|| {
+        panic!("Failed to capture topic from: {}", topic);
+    });
     let capture_topic = captures.name("topic");
     if capture_topic.is_none() {
         return;
     }
-    let capture_topic = capture_topic.unwrap().as_str();
+    let capture_topic = capture_topic.map_or("", |m| m.as_str());
     match capture_topic {
         "lock" => {
             let command = payload["payload"].as_str().unwrap_or("");
@@ -368,21 +403,26 @@ async fn handle_event(event: rumqttc::Event) {
             if payload_str.is_none() {
                 return;
             }
-            let payload_i64 = payload_str.unwrap().parse::<i64>();
-            match payload_i64 {
-                Ok(oper_time) => {
+            if let Some(payload_str) = payload_str {
+                if let Ok(oper_time) = payload_str.parse::<i64>() {
                     info!("Setting aircond timer to {}", oper_time);
-                    let mut mut_vehicle_status = VEHICLE_STATUS.lock().await;
-                    mut_vehicle_status.ac_time = oper_time;
-                    fs::write(
-                        STATE_FILE,
-                        serde_json::to_string(&*mut_vehicle_status).unwrap(),
-                    )
-                    .unwrap();
-                    drop(mut_vehicle_status);
+                    {
+                        let mut mut_vehicle_status = VEHICLE_STATUS.lock().await;
+                        mut_vehicle_status.ac_time = oper_time;
+                        match serde_json::to_string(&*mut_vehicle_status) {
+                            Ok(state_str) => match fs::write(STATE_FILE, state_str) {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    error!("Failed to write state file: {}", e);
+                                }
+                            },
+                            Err(e) => {
+                                error!("Failed to serialize vehicle status: {}", e);
+                            }
+                        }
+                    }
                     publish_vehicle_status().await;
-                }
-                Err(_) => {
+                } else {
                     error!("Invalid payload");
                 }
             }
@@ -392,21 +432,26 @@ async fn handle_event(event: rumqttc::Event) {
             if payload_str.is_none() {
                 return;
             }
-            let payload_i64 = payload_str.unwrap().parse::<i64>();
-            match payload_i64 {
-                Ok(oper_temp) => {
+            if let Some(payload_str) = payload_str {
+                if let Ok(oper_temp) = payload_str.parse::<i64>() {
                     info!("Setting temperature to {}", oper_temp);
-                    let mut mut_vehicle_status = VEHICLE_STATUS.lock().await;
-                    mut_vehicle_status.ac_temp = oper_temp;
-                    fs::write(
-                        STATE_FILE,
-                        serde_json::to_string(&*mut_vehicle_status).unwrap(),
-                    )
-                    .unwrap();
-                    drop(mut_vehicle_status);
+                    {
+                        let mut mut_vehicle_status = VEHICLE_STATUS.lock().await;
+                        mut_vehicle_status.ac_temp = oper_temp;
+                        match serde_json::to_string(&*mut_vehicle_status) {
+                            Ok(state_str) => match fs::write(STATE_FILE, state_str) {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    error!("Failed to write state file: {}", e);
+                                }
+                            },
+                            Err(e) => {
+                                error!("Failed to serialize vehicle status: {}", e);
+                            }
+                        }
+                    }
                     publish_vehicle_status().await;
-                }
-                Err(_) => {
+                } else {
                     error!("Invalid payload");
                 }
             }
@@ -426,12 +471,17 @@ async fn handle_event(event: rumqttc::Event) {
             let mut mut_vehicle_status = VEHICLE_STATUS.lock().await;
             mut_vehicle_status.petmode = command;
             *PETMODE.lock().await = command;
-            fs::write(
-                STATE_FILE,
-                serde_json::to_string(&*mut_vehicle_status).unwrap(),
-            )
-            .unwrap();
-            drop(mut_vehicle_status);
+            match serde_json::to_string(&*mut_vehicle_status) {
+                Ok(state_str) => match fs::write(STATE_FILE, state_str) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        error!("Failed to write state file: {}", e);
+                    }
+                },
+                Err(e) => {
+                    error!("Failed to serialize vehicle status: {}", e);
+                }
+            }
             publish_vehicle_status().await;
             if command {
                 let oper_time = 30i64;
@@ -493,8 +543,6 @@ async fn handle_event(event: rumqttc::Event) {
             error!("Unknown topic: {:?}", payload["topic"]);
         }
     }
-    drop(vehicle_info);
-    drop(vehicle_status);
 }
 
 async fn update_vehicle_status() {
@@ -507,7 +555,17 @@ async fn update_vehicle_status() {
             vehicle_status.ac_temp = global_vehicle_status.ac_temp;
             vehicle_status.petmode = global_vehicle_status.petmode;
             *global_vehicle_status = vehicle_status.clone();
-            fs::write(STATE_FILE, serde_json::to_string(&vehicle_status).unwrap()).unwrap();
+            match serde_json::to_string(&vehicle_status) {
+                Ok(state_str) => match fs::write(STATE_FILE, state_str) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        error!("Failed to write state file: {}", e);
+                    }
+                },
+                Err(e) => {
+                    error!("Failed to serialize vehicle status: {}", e);
+                }
+            }
             info!("Vehicle status updated");
             debug!("Vehicle status: {:?}", vehicle_status);
             *MQTT_PUBLISH.lock().await = true;
@@ -554,22 +612,11 @@ async fn publish_vehicle_status() {
     } else {
         *DEBOUNCE_AC.lock().await = "".to_string();
     }
-    let mutex_client = MQTT_CLIENT.lock().await;
-    let client = mutex_client.as_ref();
-    if client.is_some() {
-        let client = client.unwrap();
-        match publish_state(&client, &vehicle_info, &vehicle_status, &topic_prefix).await {
-            Ok(_) => {
-                info!("State published");
-            }
-            Err(e) => {
-                error!("Failed to publish state: {}", e);
-            }
-        };
-    } else {
-        let (mut client, mut eventloop) = mqtt_setup().await.unwrap();
-        tokio::spawn(async move {
-            match publish_state(&mut client, &vehicle_info, &vehicle_status, &topic_prefix).await {
+    {
+        let mutex_client = MQTT_CLIENT.lock().await;
+        let client = mutex_client.as_ref();
+        if let Some(client) = client {
+            match publish_state(&client, &vehicle_info, &vehicle_status, &topic_prefix).await {
                 Ok(_) => {
                     info!("State published");
                 }
@@ -577,28 +624,45 @@ async fn publish_vehicle_status() {
                     error!("Failed to publish state: {}", e);
                 }
             };
-            client.disconnect().await.unwrap();
-        });
-        tokio::spawn(async move {
-            let mut packet_count: usize = 0;
-            while packet_count < 4 {
-                match eventloop.poll().await {
-                    Ok(notification) => match notification {
-                        rumqttc::Event::Outgoing(rumqttc::Outgoing::Publish(_)) => {
-                            packet_count += 1;
-                        }
-                        _ => {
-                            continue;
-                        }
-                    },
+        } else {
+            let (mut client, mut eventloop) = mqtt_setup().await.unwrap_or_else(|e| {
+                panic!("Failed to set up MQTT client: {}", e);
+            });
+            tokio::spawn(async move {
+                match publish_state(&mut client, &vehicle_info, &vehicle_status, &topic_prefix)
+                    .await
+                {
+                    Ok(_) => {
+                        info!("State published");
+                    }
                     Err(e) => {
-                        error!("Error: {:?}", e);
+                        error!("Failed to publish state: {}", e);
+                    }
+                };
+                client.disconnect().await.unwrap_or_else(|e| {
+                    error!("Failed to disconnect MQTT client: {}", e);
+                });
+            });
+            tokio::spawn(async move {
+                let mut packet_count: usize = 0;
+                while packet_count < 4 {
+                    match eventloop.poll().await {
+                        Ok(notification) => match notification {
+                            rumqttc::Event::Outgoing(rumqttc::Outgoing::Publish(_)) => {
+                                packet_count += 1;
+                            }
+                            _ => {
+                                continue;
+                            }
+                        },
+                        Err(e) => {
+                            error!("Error: {:?}", e);
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
     }
-    drop(mutex_client);
 }
 
 async fn publish_availability(topic: HashMap<String, String>) {
@@ -607,31 +671,10 @@ async fn publish_availability(topic: HashMap<String, String>) {
     let brand_name = vehicle_info.brand_name.clone().to_lowercase();
     let last_vin = vehicle_info.showed_vin[15..].to_string();
     let topic_prefix = format!("{}/{}_{}", &*MQTT_CONFIG.topic_prefix, brand_name, last_vin);
-    let mutex_client = MQTT_CLIENT.lock().await;
-    let client = mutex_client.as_ref();
-    if client.is_some() {
-        let client = client.unwrap();
-        for (topic, availability) in topic {
-            match client
-                .publish(
-                    format!("{}/{}/availability", topic_prefix, topic),
-                    QOS,
-                    true,
-                    availability,
-                )
-                .await
-            {
-                Ok(_) => {
-                    info!("Availability published");
-                }
-                Err(e) => {
-                    error!("Failed to publish availability: {}", e);
-                }
-            }
-        }
-    } else {
-        let (client, mut eventloop) = mqtt_setup().await.unwrap();
-        tokio::spawn(async move {
+    {
+        let mutex_client = MQTT_CLIENT.lock().await;
+        let client = mutex_client.as_ref();
+        if let Some(client) = client {
             for (topic, availability) in topic {
                 match client
                     .publish(
@@ -650,28 +693,53 @@ async fn publish_availability(topic: HashMap<String, String>) {
                     }
                 }
             }
-            client.disconnect().await.unwrap();
-        });
-        tokio::spawn(async move {
-            let mut packet_count: usize = 0;
-            while packet_count < topic_count {
-                match eventloop.poll().await {
-                    Ok(notification) => match notification {
-                        rumqttc::Event::Outgoing(rumqttc::Outgoing::Publish(_)) => {
-                            packet_count += 1;
+        } else {
+            let (client, mut eventloop) = mqtt_setup().await.unwrap_or_else(|e| {
+                panic!("Failed to set up MQTT client: {}", e);
+            });
+            tokio::spawn(async move {
+                for (topic, availability) in topic {
+                    match client
+                        .publish(
+                            format!("{}/{}/availability", topic_prefix, topic),
+                            QOS,
+                            true,
+                            availability,
+                        )
+                        .await
+                    {
+                        Ok(_) => {
+                            info!("Availability published");
                         }
-                        _ => {
-                            continue;
+                        Err(e) => {
+                            error!("Failed to publish availability: {}", e);
                         }
-                    },
-                    Err(e) => {
-                        error!("Error: {:?}", e);
                     }
                 }
-            }
-        });
+                client.disconnect().await.unwrap_or_else(|e| {
+                    error!("Failed to disconnect MQTT client: {}", e);
+                });
+            });
+            tokio::spawn(async move {
+                let mut packet_count: usize = 0;
+                while packet_count < topic_count {
+                    match eventloop.poll().await {
+                        Ok(notification) => match notification {
+                            rumqttc::Event::Outgoing(rumqttc::Outgoing::Publish(_)) => {
+                                packet_count += 1;
+                            }
+                            _ => {
+                                continue;
+                            }
+                        },
+                        Err(e) => {
+                            error!("Error: {:?}", e);
+                        }
+                    }
+                }
+            });
+        }
     }
-    drop(mutex_client);
 }
 
 async fn read_vehicle_configuration() -> Result<VehicleInfo, ()> {

@@ -35,11 +35,14 @@ pub static MQTT_CONFIG: LazyLock<MQTTConfiguration> = LazyLock::new(|| {
             discovery_topic: mqtt_discovery_topic.unwrap_or("homeassistant").to_string(),
             topic_prefix: mqtt_topic_prefix.unwrap_or("gwm2mqtt").to_string(),
         };
-        fs::write(
-            MQTT_CONFIG_FILE,
-            serde_json::to_string(&mqtt_config).unwrap(),
-        )
-        .unwrap();
+        if let Ok(content) = serde_json::to_string(&mqtt_config) {
+            match fs::write(MQTT_CONFIG_FILE, content) {
+                Ok(_) => info!("MQTT configuration saved to file"),
+                Err(e) => error!("Failed to save MQTT configuration to file: {}", e),
+            }
+        } else {
+            panic!("Failed to serialize MQTT configuration");
+        }
         mqtt_config
     } else {
         match fs::read_to_string(MQTT_CONFIG_FILE) {

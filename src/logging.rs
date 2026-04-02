@@ -28,13 +28,17 @@ pub fn init_logger() -> Result<(), SetLoggerError> {
     let trigger = SizeTrigger::new(TRIGGER_FILE_SIZE);
     let roller = FixedWindowRoller::builder()
         .build(ARCHIVE_PATTERN, LOG_FILE_COUNT)
-        .unwrap();
+        .unwrap_or_else(|e| {
+            panic!("Failed to create log roller: {}", e);
+        });
     let policy = CompoundPolicy::new(Box::new(trigger), Box::new(roller));
     let file = RollingFileAppender::builder()
         .encoder(Box::new(PatternEncoder::new("{d} {l} {t} - {m}{n}")))
         .append(true)
         .build(FILE_PATH, Box::new(policy))
-        .unwrap();
+        .unwrap_or_else(|e| {
+            panic!("Failed to create rolling file appender: {}", e);
+        });
     let config = Config::builder()
         .appender(Appender::builder().build("file", Box::new(file)))
         .appender(
@@ -48,7 +52,9 @@ pub fn init_logger() -> Result<(), SetLoggerError> {
                 .appender("stderr")
                 .build(level),
         )
-        .unwrap();
+        .unwrap_or_else(|e| {
+            panic!("Failed to build log configuration: {}", e);
+        });
 
     match log4rs::init_config(config) {
         Ok(_) => {

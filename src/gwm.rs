@@ -28,25 +28,106 @@ const SENDREMOTECMD: &str = "v1.0/vehicle/T5/sendCmd";
 
 static STD_HEADER: LazyLock<HeaderMap> = LazyLock::new(|| {
     let mut header = HeaderMap::new();
-    header.insert("Host", "ap-h5-gateway.gwmcloud.com".parse().unwrap());
-    header.insert("rs", "2".parse().unwrap());
-    header.insert("country", "TH".parse().unwrap());
-    header.insert("channel", "APP".parse().unwrap());
-    header.insert("timezone", "GMT+07,00".parse().unwrap());
-    header.insert("language", "th".parse().unwrap());
-    header.insert("terminal", "GW_APP_Haval".parse().unwrap());
-    header.insert("cver", "1.8.3".parse().unwrap());
-    header.insert("regioncode", "TH".parse().unwrap());
-    header.insert("iccid", "a71dfe6316224f36bb760151d5ec2d5c".parse().unwrap());
-    header.insert("appid", "1".parse().unwrap());
-    header.insert("systemtype", "1".parse().unwrap());
-    header.insert("enterpriseid", "CC01".parse().unwrap());
-    header.insert("brand", "1".parse().unwrap());
+    header.insert(
+        "Host",
+        "ap-h5-gateway.gwmcloud.com".parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
+    header.insert(
+        "rs",
+        "2".parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
+    header.insert(
+        "country",
+        "TH".parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
+    header.insert(
+        "channel",
+        "APP".parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
+    header.insert(
+        "timezone",
+        "GMT+07,00".parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
+    header.insert(
+        "language",
+        "th".parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
+    header.insert(
+        "terminal",
+        "GW_APP_Haval".parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
+    header.insert(
+        "cver",
+        "1.8.3".parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
+    header.insert(
+        "regioncode",
+        "TH".parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
+    header.insert(
+        "iccid",
+        "a71dfe6316224f36bb760151d5ec2d5c"
+            .parse()
+            .unwrap_or_else(|e| {
+                panic!("Failed to parse header: {}", e);
+            }),
+    );
+    header.insert(
+        "appid",
+        "1".parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
+    header.insert(
+        "systemtype",
+        "1".parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
+    header.insert(
+        "enterpriseid",
+        "CC01".parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
+    header.insert(
+        "brand",
+        "1".parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
     header.insert(
         "content-type",
-        "application/json; charset=UTF-8".parse().unwrap(),
+        "application/json; charset=UTF-8"
+            .parse()
+            .unwrap_or_else(|e| {
+                panic!("Failed to parse header: {}", e);
+            }),
     );
-    header.insert("user-agent", "okhttp/4.2.2".parse().unwrap());
+    header.insert(
+        "user-agent",
+        "okhttp/4.2.2".parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
     header
 });
 
@@ -272,10 +353,30 @@ fn calc_header(method: &str, url_path: &str, payload_str: &str, headers: HeaderM
     hasher.update(sign);
     let sign = format!("{:X}", hasher.finalize()).to_ascii_lowercase();
     let mut headers = headers.clone();
-    headers.insert("bt-auth-appkey", BTAPPKEY.parse().unwrap());
-    headers.insert("bt-auth-sign", sign.parse().unwrap());
-    headers.insert("bt-auth-nonce", nonce.parse().unwrap());
-    headers.insert("bt-auth-timestamp", timestamp.to_string().parse().unwrap());
+    headers.insert(
+        "bt-auth-appkey",
+        BTAPPKEY.parse().unwrap_or_else(|e| {
+            panic!("Failed to parse bt-auth-appkey: {}", e);
+        }),
+    );
+    headers.insert(
+        "bt-auth-sign",
+        sign.parse().unwrap_or_else(|e| {
+            panic!("Failed to parse bt-auth-sign: {}", e);
+        }),
+    );
+    headers.insert(
+        "bt-auth-nonce",
+        nonce.parse().unwrap_or_else(|e| {
+            panic!("Failed to parse bt-auth-nonce: {}", e);
+        }),
+    );
+    headers.insert(
+        "bt-auth-timestamp",
+        timestamp.to_string().parse().unwrap_or_else(|e| {
+            panic!("Failed to parse bt-auth-timestamp: {}", e);
+        }),
+    );
     headers
 }
 
@@ -290,16 +391,20 @@ fn sign_calc_get(url: &Url, headers: HeaderMap) -> HeaderMap {
                 let mut q = q.split('=');
                 let key = q.next();
                 let value = q.next();
-                if key.is_some() && value.is_some() {
-                    payload_str.push_str(key.unwrap().to_string().to_ascii_lowercase().as_str());
-                    payload_str.push_str("=");
-                    payload_str.push_str(value.unwrap());
+                if let Some(key) = key {
+                    if let Some(value) = value {
+                        payload_str.push_str(key.to_string().to_ascii_lowercase().as_str());
+                        payload_str.push_str("=");
+                        payload_str.push_str(value);
+                    }
                 }
             });
         }
         None => {}
     }
-    let re = Regex::new(r"\s+").unwrap();
+    let re = Regex::new(r"\s+").unwrap_or_else(|e| {
+        panic!("Failed to create regex: {}", e);
+    });
     let payload_str = re.replace_all(&payload_str, "").to_string();
     let headers = calc_header("GET", url_path, &payload_str, headers);
     headers
@@ -320,9 +425,21 @@ pub async fn login() -> Result<bool, String> {
     let password = PASSWORD.unwrap_or_else(|| {
         panic!("Missing PASSWORD var");
     });
-    let url = Url::parse(BASEURL).unwrap().join(LOGIN).unwrap();
+    let url = Url::parse(BASEURL)
+        .unwrap_or_else(|e| {
+            panic!("Failed to parse base URL: {}", e);
+        })
+        .join(LOGIN)
+        .unwrap_or_else(|e| {
+            panic!("Failed to parse login URL: {}", e);
+        });
     let mut headers = STD_HEADER.clone();
-    headers.insert("accesstoken", "".parse().unwrap());
+    headers.insert(
+        "accesstoken",
+        "".parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
     let payload = json!({
         "account": email,
         "password": password,
@@ -364,11 +481,23 @@ pub async fn login() -> Result<bool, String> {
         );
         return Ok(false);
     }
-    let access_token = res["data"]["accessToken"].as_str().unwrap();
-    let refresh_token = res["data"]["refreshToken"].as_str().unwrap();
+    let access_token = match res["data"]["accessToken"].as_str() {
+        Some(token) => token,
+        None => {
+            error!("No access token found in response");
+            return Err("No access token found in response".to_string());
+        }
+    };
+    let refresh_token = match res["data"]["refreshToken"].as_str() {
+        Some(token) => token,
+        None => {
+            error!("No refresh token found in response");
+            return Err("No refresh token found in response".to_string());
+        }
+    };
     let mut creds = CREDENTIALS.lock().await;
     let md5pin = if PIN.unwrap_or("") != "" {
-        format!("{:X}", compute(PIN.unwrap())).to_ascii_lowercase()
+        format!("{:X}", compute(PIN.unwrap_or(""))).to_ascii_lowercase()
     } else {
         "".to_string()
     };
@@ -446,9 +575,21 @@ pub async fn get_accesstoken() -> Result<String, String> {
     let access_token = creds.access_token.clone();
     let refresh_token = creds.refresh_token.clone();
     info!("Refreshing access token");
-    let url = Url::parse(BASEURL).unwrap().join(REFRESHTOKEN).unwrap();
+    let url = Url::parse(BASEURL)
+        .unwrap_or_else(|e| {
+            panic!("Failed to parse base URL: {}", e);
+        })
+        .join(REFRESHTOKEN)
+        .unwrap_or_else(|e| {
+            panic!("Failed to parse refresh token URL: {}", e);
+        });
     let mut headers = STD_HEADER.clone();
-    headers.insert("accesstoken", "".parse().unwrap());
+    headers.insert(
+        "accesstoken",
+        "".parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
     let payload = json!({
         "accessToken": access_token,
         "deviceId": DEVICE_ID,
@@ -476,8 +617,20 @@ pub async fn get_accesstoken() -> Result<String, String> {
             return Err("Failed to parse response".to_string());
         }
     };
-    let access_token = res["data"]["accessToken"].as_str().unwrap();
-    let refresh_token = res["data"]["refreshToken"].as_str().unwrap();
+    let access_token = match res["data"]["accessToken"].as_str() {
+        Some(token) => token,
+        None => {
+            error!("No access token found in response");
+            return Err("No access token found in response".to_string());
+        }
+    };
+    let refresh_token = match res["data"]["refreshToken"].as_str() {
+        Some(token) => token,
+        None => {
+            error!("No refresh token found in response");
+            return Err("No refresh token found in response".to_string());
+        }
+    };
     let new_credentials = Credentials::new(access_token, refresh_token, &creds.md5_pin);
     *creds = new_credentials.clone();
     // fs::write(CRED_FILE, serde_json::to_string(&new_credentials).unwrap()).unwrap();
@@ -491,9 +644,21 @@ pub async fn get_vehicles() -> Result<Vec<VehicleInfo>, String> {
         Ok(token) => token,
         Err(e) => return Err(e),
     };
-    let url = Url::parse(BASEURL).unwrap().join(ACQUIREVEHICLES).unwrap();
+    let url = Url::parse(BASEURL)
+        .unwrap_or_else(|e| {
+            panic!("Failed to parse base URL: {}", e);
+        })
+        .join(ACQUIREVEHICLES)
+        .unwrap_or_else(|e| {
+            panic!("Failed to parse acquire vehicles URL: {}", e);
+        });
     let mut headers = STD_HEADER.clone();
-    headers.insert("accesstoken", access_token.parse().unwrap());
+    headers.insert(
+        "accesstoken",
+        access_token.parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
     let headers = sign_calc_get(&url, headers);
     let client = Client::new();
     let res = match client.get(url).headers(headers).send().await {
@@ -513,11 +678,23 @@ pub async fn get_vehicles() -> Result<Vec<VehicleInfo>, String> {
                 return Err("Failed to get vehicles".to_string());
             }
             let data = res["data"].clone();
-            data.as_array()
-                .unwrap()
+            let data_arr = match data.as_array() {
+                Some(arr) => arr,
+                None => {
+                    error!("No vehicles found in response");
+                    return Err("No vehicles found in response".to_string());
+                }
+            };
+            let res = data_arr
                 .iter()
-                .map(|v| VehicleInfo::deserialize(v).unwrap())
-                .collect::<Vec<VehicleInfo>>()
+                .map(|v| {
+                    VehicleInfo::deserialize(v).unwrap_or_else(|e| {
+                        error!("Failed to parse vehicle info: {}", e);
+                        VehicleInfo::default()
+                    })
+                })
+                .collect::<Vec<VehicleInfo>>();
+            res
         }
         Err(e) => {
             error!("Failed to parse response: {}", e);
@@ -535,13 +712,24 @@ pub async fn get_vehicle_status(vin: &str, model_id: i64) -> Result<VehicleStatu
         Err(e) => return Err(e),
     };
     let url = Url::parse(BASEURL)
-        .unwrap()
+        .unwrap_or_else(|e| {
+            panic!("Failed to parse base URL: {}", e);
+        })
         .join(GETVEHICLESTATUS)
-        .unwrap()
+        .unwrap_or_else(|e| {
+            panic!("Failed to parse get vehicle status URL: {}", e);
+        })
         .join(&format!("?vin={}&modelId={}", vin, model_id))
-        .unwrap();
+        .unwrap_or_else(|e| {
+            panic!("Failed to parse get vehicle status URL with query: {}", e);
+        });
     let mut headers = STD_HEADER.clone();
-    headers.insert("accesstoken", access_token.parse().unwrap());
+    headers.insert(
+        "accesstoken",
+        access_token.parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
     let headers = sign_calc_get(&url, headers);
     let client = Client::new();
     let res = match client.get(url).headers(headers).send().await {
@@ -586,11 +774,28 @@ pub async fn send_climate_command(
     if md5_pin.is_empty() {
         return Err("No PIN set".to_string());
     }
-    let url = Url::parse(BASEURL).unwrap().join(SENDREMOTECMD).unwrap();
+    let url = Url::parse(BASEURL)
+        .unwrap_or_else(|e| {
+            panic!("Failed to parse base URL: {}", e);
+        })
+        .join(SENDREMOTECMD)
+        .unwrap_or_else(|e| {
+            panic!("Failed to parse send remote command URL: {}", e);
+        });
     let seq_no = format!("{}1234", Uuid::new_v4().to_string().replace("-", ""));
     let mut headers = STD_HEADER.clone();
-    headers.insert("accesstoken", access_token.parse().unwrap());
-    headers.insert("vin", vin.parse().unwrap());
+    headers.insert(
+        "accesstoken",
+        access_token.parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
+    headers.insert(
+        "vin",
+        vin.parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
     let payload = json!({
         "instructions": {
             "0x04": {
@@ -667,11 +872,28 @@ pub async fn send_lock_command(vin: &str, switch_order: &str) -> Result<bool, St
     if md5_pin.is_empty() {
         return Err("No PIN set".to_string());
     }
-    let url = Url::parse(BASEURL).unwrap().join(SENDREMOTECMD).unwrap();
+    let url = Url::parse(BASEURL)
+        .unwrap_or_else(|e| {
+            panic!("Failed to parse base URL: {}", e);
+        })
+        .join(SENDREMOTECMD)
+        .unwrap_or_else(|e| {
+            panic!("Failed to parse send remote command URL: {}", e);
+        });
     let seq_no = format!("{}1234", Uuid::new_v4().to_string().replace("-", ""));
     let mut headers = STD_HEADER.clone();
-    headers.insert("accesstoken", access_token.parse().unwrap());
-    headers.insert("vin", vin.parse().unwrap());
+    headers.insert(
+        "accesstoken",
+        access_token.parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
+    headers.insert(
+        "vin",
+        vin.parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
     let payload = json!({
         "instructions": {
             "0x05": {
@@ -741,14 +963,33 @@ async fn get_remote_cmd_status(vin: &str, seq_no: &str, remote_type: &str) -> Re
         Err(e) => return Err(e),
     };
     let url = Url::parse(BASEURL)
-        .unwrap()
+        .unwrap_or_else(|e| {
+            panic!("Failed to parse base URL: {}", e);
+        })
         .join(GETREMOTECMDSTATUS)
-        .unwrap()
+        .unwrap_or_else(|e| {
+            panic!("Failed to parse get remote command status URL: {}", e);
+        })
         .join(&format!("?seqNo={}", seq_no))
-        .unwrap();
+        .unwrap_or_else(|e| {
+            panic!(
+                "Failed to parse get remote command status URL with query: {}",
+                e
+            );
+        });
     let mut headers = STD_HEADER.clone();
-    headers.insert("accesstoken", access_token.parse().unwrap());
-    headers.insert("vin", vin.parse().unwrap());
+    headers.insert(
+        "accesstoken",
+        access_token.parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
+    headers.insert(
+        "vin",
+        vin.parse().unwrap_or_else(|e| {
+            panic!("Failed to parse header: {}", e);
+        }),
+    );
     let headers = sign_calc_get(&url, headers);
     let client = Client::new();
     match client.get(url).headers(headers).send().await {
@@ -762,8 +1003,11 @@ async fn get_remote_cmd_status(vin: &str, seq_no: &str, remote_type: &str) -> Re
                     return Err("Failed to get remote command status".to_string());
                 } else {
                     info!("Remote command status retrieved");
-                    if res["data"][0]["remoteType"].as_str().unwrap() == remote_type {
-                        return Ok(true);
+                    if let Some(res_remote_type) = res["data"][0]["remoteType"].as_str() {
+                        if res_remote_type == remote_type {
+                            return Ok(true);
+                        }
+                        return Ok(false);
                     } else {
                         return Ok(false);
                     }
@@ -791,9 +1035,13 @@ fn parse_vehicle_status(vin: &str, data: &Value) -> VehicleStatus {
         ("5", "Unknown 5"),
         ("6", "Error"),
     ]);
+    let default_arr = vec![];
     let items = data["items"]
         .as_array()
-        .unwrap()
+        .unwrap_or_else(|| {
+            error!("No items found in vehicle status response");
+            &default_arr
+        })
         .iter()
         .map(|i| {
             let key = i["code"].as_str().unwrap_or("Unknown");
