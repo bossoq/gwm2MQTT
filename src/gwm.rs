@@ -559,22 +559,48 @@ pub async fn check_token() -> (bool, bool) {
 
 pub async fn get_accesstoken() -> Result<String, String> {
     info!("Getting access token");
-    let (token_valid, token_expired) = check_token().await;
-    if !token_valid {
-        error!("Token is invalid");
-        return Err("Token is invalid".to_string());
-    }
-    if !token_expired {
+    let key = DecodingKey::from_secret(&[]);
+    let mut validation = Validation::new(Algorithm::RS256);
+    validation.insecure_disable_signature_validation();
+    validation.validate_aud = false;
+    // Read all needed credential data under a single lock to avoid TOCTOU between
+    // the validity check and the subsequent read/refresh.
+    let (is_expired, access_token, refresh_token, md5_pin) = {
         let creds = CREDENTIALS.lock().await;
-        let access_token = creds.access_token.clone();
+        if creds.access_token.is_empty() || creds.refresh_token.is_empty() {
+            error!("No credentials found");
+            return Err("No credentials found".to_string());
+        }
+        match decode::<RefreshToken>(&creds.refresh_token, &key, &validation) {
+            Ok(_) => {}
+            Err(e) => {
+                error!("Refresh token invalid or expired: {}", e);
+                return Err("Refresh token invalid or expired".to_string());
+            }
+        }
+        let is_expired = match decode::<AccessToken>(&creds.access_token, &key, &validation) {
+            Ok(_) => false,
+            Err(e) => {
+                if e.kind() == &jsonwebtoken::errors::ErrorKind::ExpiredSignature {
+                    true
+                } else {
+                    error!("Access token invalid: {}", e);
+                    return Err("Access token invalid".to_string());
+                }
+            }
+        };
+        (
+            is_expired,
+            creds.access_token.clone(),
+            creds.refresh_token.clone(),
+            creds.md5_pin.clone(),
+        )
+    };
+    if !is_expired {
         info!("Got access token");
         return Ok(access_token);
     }
-    info!("Token is expired");
-    let mut creds = CREDENTIALS.lock().await;
-    let access_token = creds.access_token.clone();
-    let refresh_token = creds.refresh_token.clone();
-    info!("Refreshing access token");
+    info!("Token is expired, refreshing");
     let url = Url::parse(BASEURL)
         .unwrap_or_else(|e| {
             panic!("Failed to parse base URL: {}", e);
@@ -617,25 +643,23 @@ pub async fn get_accesstoken() -> Result<String, String> {
             return Err("Failed to parse response".to_string());
         }
     };
-    let access_token = match res["data"]["accessToken"].as_str() {
-        Some(token) => token,
+    let new_access_token = match res["data"]["accessToken"].as_str() {
+        Some(token) => token.to_string(),
         None => {
             error!("No access token found in response");
             return Err("No access token found in response".to_string());
         }
     };
-    let refresh_token = match res["data"]["refreshToken"].as_str() {
-        Some(token) => token,
+    let new_refresh_token = match res["data"]["refreshToken"].as_str() {
+        Some(token) => token.to_string(),
         None => {
             error!("No refresh token found in response");
             return Err("No refresh token found in response".to_string());
         }
     };
-    let new_credentials = Credentials::new(access_token, refresh_token, &creds.md5_pin);
-    *creds = new_credentials.clone();
-    // fs::write(CRED_FILE, serde_json::to_string(&new_credentials).unwrap()).unwrap();
+    *CREDENTIALS.lock().await = Credentials::new(&new_access_token, &new_refresh_token, &md5_pin);
     info!("Access token refreshed");
-    Ok(access_token.to_string())
+    Ok(new_access_token)
 }
 
 pub async fn get_vehicles() -> Result<Vec<VehicleInfo>, String> {
@@ -849,7 +873,7 @@ pub async fn send_climate_command(
                     info!("Climate command sent");
                     return Ok(true);
                 } else {
-                    error!("Waiting for climate command to be sent");
+                    debug!("Waiting for climate command to be sent");
                 }
             }
             Err(e) => return Err(e),
@@ -943,7 +967,7 @@ pub async fn send_lock_command(vin: &str, switch_order: &str) -> Result<bool, St
                     info!("Lock command sent");
                     return Ok(true);
                 } else {
-                    error!("Waiting for lock command to be sent");
+                    debug!("Waiting for lock command to be sent");
                 }
             }
             Err(e) => return Err(e),
@@ -1005,10 +1029,16 @@ async fn get_remote_cmd_status(vin: &str, seq_no: &str, remote_type: &str) -> Re
                     info!("Remote command status retrieved");
                     if let Some(res_remote_type) = res["data"][0]["remoteType"].as_str() {
                         if res_remote_type == remote_type {
+                            info!("Command {} acknowledged by vehicle", remote_type);
                             return Ok(true);
                         }
+                        debug!(
+                            "Response remote type {} does not match expected {}",
+                            res_remote_type, remote_type
+                        );
                         return Ok(false);
                     } else {
+                        debug!("No command result data yet for this sequence");
                         return Ok(false);
                     }
                 }
@@ -1119,10 +1149,9 @@ fn parse_vehicle_status(vin: &str, data: &Value) -> VehicleStatus {
         right_turn_light: items["2204010"].as_str().unwrap_or("0") == "1",
         longitude: data["longitude"].as_f64().unwrap_or(0.0),
         latitude: data["latitude"].as_f64().unwrap_or(0.0),
-        ac_time: 15,
-        ac_temp: 26,
-        petmode: false,
         updated_at: DateTime::from_timestamp_millis(data["updateTime"].as_i64().unwrap_or(0))
             .unwrap_or(Utc::now()),
+        // ac_time, ac_temp, petmode are local-only; caller must restore from global state
+        ..VehicleStatus::default()
     }
 }

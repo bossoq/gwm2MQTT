@@ -75,7 +75,7 @@ pub static MQTT_CONFIG: LazyLock<MQTTConfiguration> = LazyLock::new(|| {
     }
 });
 
-pub const QOS: QoS = QoS::AtMostOnce;
+pub const QOS: QoS = QoS::AtLeastOnce;
 
 pub async fn setup() -> Result<(AsyncClient, EventLoop), Box<dyn std::error::Error>> {
     info!("Setting up MQTT client");
@@ -120,15 +120,12 @@ pub async fn publish_discovery(
     topic_prefix: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!("Publishing discovery");
-    let name = format!(
-        "{}_{}",
-        vehicle_info.brand_name.clone(),
-        vehicle_info.showed_vin[15..].to_string()
-    );
+    let last_vin = vehicle_info.showed_vin.get(15..).unwrap_or("");
+    let name = format!("{}_{}", vehicle_info.brand_name.clone(), last_vin);
     let prefix = format!(
         "{}_{}",
-        vehicle_info.showed_vin[..3].to_string(),
-        vehicle_info.showed_vin[15..].to_string()
+        vehicle_info.showed_vin.get(..3).unwrap_or(""),
+        last_vin
     );
     let device = json!({
         "ids": name,
