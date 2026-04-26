@@ -14,9 +14,9 @@ use url::Url;
 use urlencoding::encode;
 use uuid::Uuid;
 
-const EMAIL: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("EMAIL"));
-const PASSWORD: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("PASSWORD"));
-const PIN: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("PIN"));
+static EMAIL: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("EMAIL"));
+static PASSWORD: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("PASSWORD"));
+static PIN: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("PIN"));
 // const CRED_FILE: &str = "/opt/gwm2mqtt/credentials.json";
 const BASEURL: &str = "https://ap-h5-gateway.gwmcloud.com/app-api/api/";
 const LOGIN: &str = "v1.0/userAuth/loginAccount";
@@ -474,7 +474,7 @@ pub async fn login() -> Result<bool, String> {
             return Err("Failed to parse response".to_string());
         }
     };
-    if res["code"] != "000000".to_string() {
+    if res["code"] != "000000" {
         error!(
             "Failed to login: {}",
             res["description"].as_str().unwrap_or("Unknown error")
@@ -694,7 +694,7 @@ pub async fn get_vehicles() -> Result<Vec<VehicleInfo>, String> {
     };
     let res = match res.json::<serde_json::Value>().await {
         Ok(res) => {
-            if res["code"] != "000000".to_string() {
+            if res["code"] != "000000" {
                 error!(
                     "Failed to get vehicles: {}",
                     res["description"].as_str().unwrap_or("Unknown error")
@@ -765,7 +765,7 @@ pub async fn get_vehicle_status(vin: &str, model_id: i64) -> Result<VehicleStatu
     };
     let res = match res.json::<serde_json::Value>().await {
         Ok(res) => {
-            if res["code"] != "000000".to_string() {
+            if res["code"] != "000000" {
                 error!(
                     "Failed to get vehicle status: {}",
                     res["description"].as_str().unwrap_or("Unknown error")
@@ -858,7 +858,7 @@ pub async fn send_climate_command(
             return Err("Failed to parse response".to_string());
         }
     };
-    if res["code"] != "000000".to_string() {
+    if res["code"] != "000000" {
         error!(
             "Failed to send climate command: {}",
             res["description"].as_str().unwrap_or("Unknown error")
@@ -952,7 +952,7 @@ pub async fn send_lock_command(vin: &str, switch_order: &str) -> Result<bool, St
             return Err("Failed to parse response".to_string());
         }
     };
-    if res["code"] != "000000".to_string() {
+    if res["code"] != "000000" {
         error!(
             "Failed to send lock command: {}",
             res["description"].as_str().unwrap_or("Unknown error")
@@ -1019,7 +1019,7 @@ async fn get_remote_cmd_status(vin: &str, seq_no: &str, remote_type: &str) -> Re
     match client.get(url).headers(headers).send().await {
         Ok(res) => match res.json::<serde_json::Value>().await {
             Ok(res) => {
-                if res["code"] != "000000".to_string() {
+                if res["code"] != "000000" {
                     error!(
                         "Failed to get remote command status: {}",
                         res["description"].as_str().unwrap_or("Unknown error")
