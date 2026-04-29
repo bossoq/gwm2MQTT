@@ -1,5 +1,5 @@
 #![recursion_limit = "256"]
-mod gwm;
+pub mod gwm;
 mod mqtt;
 
 use gwm::{

@@ -1055,7 +1055,7 @@ async fn get_remote_cmd_status(vin: &str, seq_no: &str, remote_type: &str) -> Re
     };
 }
 
-fn parse_vehicle_status(vin: &str, data: &Value) -> VehicleStatus {
+pub fn parse_vehicle_status(vin: &str, data: &Value) -> VehicleStatus {
     let charge_status_desc = HashMap::from([
         ("0", "Not Charging"),
         ("1", "Charging"),
@@ -1079,74 +1079,76 @@ fn parse_vehicle_status(vin: &str, data: &Value) -> VehicleStatus {
             (key.to_string(), value)
         })
         .collect::<Map<String, Value>>();
+    let null = Value::Null;
+    let get = |key: &str| items.get(key).unwrap_or(&null);
     VehicleStatus {
         vin: vin.to_string(),
-        mileage: items["2103010"].as_i64().unwrap_or(0),
-        soc: items["2013021"].as_i64().unwrap_or(0),
-        range: items["2011007"].as_i64().unwrap_or(0),
-        charge_time: items["2013022"]
+        mileage: get("2103010").as_i64().unwrap_or(0),
+        soc: get("2013021").as_i64().unwrap_or(0),
+        range: get("2011007").as_i64().unwrap_or(0),
+        charge_time: get("2013022")
             .as_str()
             .unwrap_or("0")
             .parse::<i64>()
             .unwrap_or(0),
-        charging_status: items["2041142"].as_str().unwrap_or("0") == "1",
+        charging_status: get("2041142").as_str().unwrap_or("0") == "1",
         charging_status_desc: charge_status_desc
-            .get(&items["2041142"].as_str().unwrap_or("0"))
+            .get(&get("2041142").as_str().unwrap_or("0"))
             .unwrap_or(&"Unknown Mapping")
             .to_string(),
-        charging_port_plugged: items["2042082"].as_str().unwrap_or("0") == "1",
-        ac_status: items["2202001"].as_str().unwrap_or("0") == "1",
-        air_filter_status: items["2078020"].as_str().unwrap_or("0") == "1",
-        unlock_status: items["2208001"].as_str().unwrap_or("0") == "1",
-        fl_door_open: items["2206004"].as_str().unwrap_or("0") == "1",
-        fr_door_open: items["2206002"].as_str().unwrap_or("0") == "1",
-        rl_door_open: items["2206005"].as_str().unwrap_or("0") == "1",
-        rr_door_open: items["2206003"].as_str().unwrap_or("0") == "1",
-        trunk_open: items["2206001"].as_str().unwrap_or("0") == "1",
-        fl_window_open: items["2210002"].as_str().unwrap_or("1") == "0",
-        fr_window_open: items["2210001"].as_str().unwrap_or("1") == "0",
-        rl_window_open: items["2210004"].as_str().unwrap_or("1") == "0",
-        rr_window_open: items["2210003"].as_str().unwrap_or("1") == "0",
-        sunroof_open: items["2210005"].as_str().unwrap_or("3") == "6",
-        fl_tire_pressure: (items["2101001"].as_f64().unwrap_or(0.0) * 14.503773773020923).round()
+        charging_port_plugged: get("2042082").as_str().unwrap_or("0") == "1",
+        ac_status: get("2202001").as_str().unwrap_or("0") == "1",
+        air_filter_status: get("2078020").as_str().unwrap_or("0") == "1",
+        unlock_status: get("2208001").as_str().unwrap_or("0") == "1",
+        fl_door_open: get("2206004").as_str().unwrap_or("0") == "1",
+        fr_door_open: get("2206002").as_str().unwrap_or("0") == "1",
+        rl_door_open: get("2206005").as_str().unwrap_or("0") == "1",
+        rr_door_open: get("2206003").as_str().unwrap_or("0") == "1",
+        trunk_open: get("2206001").as_str().unwrap_or("0") == "1",
+        fl_window_open: get("2210002").as_str().unwrap_or("1") == "0",
+        fr_window_open: get("2210001").as_str().unwrap_or("1") == "0",
+        rl_window_open: get("2210004").as_str().unwrap_or("1") == "0",
+        rr_window_open: get("2210003").as_str().unwrap_or("1") == "0",
+        sunroof_open: get("2210005").as_str().unwrap_or("3") == "6",
+        fl_tire_pressure: (get("2101001").as_f64().unwrap_or(0.0) * 14.503773773020923).round()
             / 100.0,
-        fr_tire_pressure: (items["2101002"].as_f64().unwrap_or(0.0) * 14.503773773020923).round()
+        fr_tire_pressure: (get("2101002").as_f64().unwrap_or(0.0) * 14.503773773020923).round()
             / 100.0,
-        rl_tire_pressure: (items["2101003"].as_f64().unwrap_or(0.0) * 14.503773773020923).round()
+        rl_tire_pressure: (get("2101003").as_f64().unwrap_or(0.0) * 14.503773773020923).round()
             / 100.0,
-        rr_tire_pressure: (items["2101004"].as_f64().unwrap_or(0.0) * 14.503773773020923).round()
+        rr_tire_pressure: (get("2101004").as_f64().unwrap_or(0.0) * 14.503773773020923).round()
             / 100.0,
-        fl_tire_temp: items["2101005"]
+        fl_tire_temp: get("2101005")
             .as_str()
             .unwrap_or("0")
             .parse::<i64>()
             .unwrap_or(0),
-        fr_tire_temp: items["2101006"]
+        fr_tire_temp: get("2101006")
             .as_str()
             .unwrap_or("0")
             .parse::<i64>()
             .unwrap_or(0),
-        rl_tire_temp: items["2101007"]
+        rl_tire_temp: get("2101007")
             .as_str()
             .unwrap_or("0")
             .parse::<i64>()
             .unwrap_or(0),
-        rr_tire_temp: items["2101008"]
+        rr_tire_temp: get("2101008")
             .as_str()
             .unwrap_or("0")
             .parse::<i64>()
             .unwrap_or(0),
-        fl_tire_pressure_alarm: items["2102001"].as_str().unwrap_or("0") == "1",
-        fr_tire_pressure_alarm: items["2102002"].as_str().unwrap_or("0") == "1",
-        rl_tire_pressure_alarm: items["2102003"].as_str().unwrap_or("0") == "1",
-        rr_tire_pressure_alarm: items["2102004"].as_str().unwrap_or("0") == "1",
-        fl_tire_temp_alarm: items["2102007"].as_str().unwrap_or("0") == "1",
-        fr_tire_temp_alarm: items["2102008"].as_str().unwrap_or("0") == "1",
-        rl_tire_temp_alarm: items["2102009"].as_str().unwrap_or("0") == "1",
-        rr_tire_temp_alarm: items["2102010"].as_str().unwrap_or("0") == "1",
-        head_light: items["2204007"].as_str().unwrap_or("0") == "1",
-        left_turn_light: items["2204009"].as_str().unwrap_or("0") == "1",
-        right_turn_light: items["2204010"].as_str().unwrap_or("0") == "1",
+        fl_tire_pressure_alarm: get("2102001").as_str().unwrap_or("0") == "1",
+        fr_tire_pressure_alarm: get("2102002").as_str().unwrap_or("0") == "1",
+        rl_tire_pressure_alarm: get("2102003").as_str().unwrap_or("0") == "1",
+        rr_tire_pressure_alarm: get("2102004").as_str().unwrap_or("0") == "1",
+        fl_tire_temp_alarm: get("2102007").as_str().unwrap_or("0") == "1",
+        fr_tire_temp_alarm: get("2102008").as_str().unwrap_or("0") == "1",
+        rl_tire_temp_alarm: get("2102009").as_str().unwrap_or("0") == "1",
+        rr_tire_temp_alarm: get("2102010").as_str().unwrap_or("0") == "1",
+        head_light: get("2204007").as_str().unwrap_or("0") == "1",
+        left_turn_light: get("2204009").as_str().unwrap_or("0") == "1",
+        right_turn_light: get("2204010").as_str().unwrap_or("0") == "1",
         longitude: data["longitude"].as_f64().unwrap_or(0.0),
         latitude: data["latitude"].as_f64().unwrap_or(0.0),
         updated_at: DateTime::from_timestamp_millis(data["updateTime"].as_i64().unwrap_or(0))
