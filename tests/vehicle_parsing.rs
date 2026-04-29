@@ -113,8 +113,8 @@ fn parses_door_states() {
 fn window_open_logic_is_inverted() {
     // GWM API: value "0" = open, "1" = closed
     let status = parse_vehicle_status("VIN", &sample_data());
-    assert!(status.fl_window_open);   // value "0" → open
-    assert!(!status.fr_window_open);  // value "1" → closed
+    assert!(status.fl_window_open); // value "0" → open
+    assert!(!status.fr_window_open); // value "1" → closed
 }
 
 #[test]
