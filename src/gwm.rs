@@ -383,38 +383,33 @@ fn calc_header(method: &str, url_path: &str, payload_str: &str, headers: HeaderM
 fn sign_calc_get(url: &Url, headers: HeaderMap) -> HeaderMap {
     let mut payload_str = String::new();
     let url_path = url.path();
-    match url.query() {
-        Some(query) => {
-            let mut query = query.split('&').collect::<Vec<&str>>();
-            query.sort();
-            query.iter().for_each(|q| {
-                let mut q = q.split('=');
-                let key = q.next();
-                let value = q.next();
-                if let Some(key) = key {
-                    if let Some(value) = value {
-                        payload_str.push_str(key.to_string().to_ascii_lowercase().as_str());
-                        payload_str.push_str("=");
-                        payload_str.push_str(value);
-                    }
+    if let Some(query) = url.query() {
+        let mut query = query.split('&').collect::<Vec<&str>>();
+        query.sort();
+        query.iter().for_each(|q| {
+            let mut q = q.split('=');
+            let key = q.next();
+            let value = q.next();
+            if let Some(key) = key {
+                if let Some(value) = value {
+                    payload_str.push_str(key.to_string().to_ascii_lowercase().as_str());
+                    payload_str.push('=');
+                    payload_str.push_str(value);
                 }
-            });
-        }
-        None => {}
+            }
+        });
     }
     let re = Regex::new(r"\s+").unwrap_or_else(|e| {
         panic!("Failed to create regex: {}", e);
     });
     let payload_str = re.replace_all(&payload_str, "").to_string();
-    let headers = calc_header("GET", url_path, &payload_str, headers);
-    headers
+    calc_header("GET", url_path, &payload_str, headers)
 }
 
 fn sign_calc_post(payload: &Value, url: &Url, headers: HeaderMap) -> HeaderMap {
-    let payload_str = format!("json={}", payload.to_string()).replace(" ", "");
+    let payload_str = format!("json={}", payload).replace(' ', "");
     let url_path = url.path();
-    let headers = calc_header("POST", url_path, &payload_str, headers);
-    headers
+    calc_header("POST", url_path, &payload_str, headers)
 }
 
 pub async fn login() -> Result<bool, String> {
@@ -496,7 +491,7 @@ pub async fn login() -> Result<bool, String> {
         }
     };
     let mut creds = CREDENTIALS.lock().await;
-    let md5pin = if PIN.unwrap_or("") != "" {
+    let md5pin = if !PIN.unwrap_or("").is_empty() {
         format!("{:X}", compute(PIN.unwrap_or(""))).to_ascii_lowercase()
     } else {
         "".to_string()
@@ -554,7 +549,7 @@ pub async fn check_token() -> (bool, bool) {
             }
         }
     }
-    return (token_valid, token_expired);
+    (token_valid, token_expired)
 }
 
 pub async fn get_accesstoken() -> Result<String, String> {
@@ -1024,7 +1019,7 @@ async fn get_remote_cmd_status(vin: &str, seq_no: &str, remote_type: &str) -> Re
                         "Failed to get remote command status: {}",
                         res["description"].as_str().unwrap_or("Unknown error")
                     );
-                    return Err("Failed to get remote command status".to_string());
+                    Err("Failed to get remote command status".to_string())
                 } else {
                     info!("Remote command status retrieved");
                     if let Some(res_remote_type) = res["data"][0]["remoteType"].as_str() {
@@ -1036,23 +1031,23 @@ async fn get_remote_cmd_status(vin: &str, seq_no: &str, remote_type: &str) -> Re
                             "Response remote type {} does not match expected {}",
                             res_remote_type, remote_type
                         );
-                        return Ok(false);
+                        Ok(false)
                     } else {
                         debug!("No command result data yet for this sequence");
-                        return Ok(false);
+                        Ok(false)
                     }
                 }
             }
             Err(e) => {
                 error!("Failed to parse response: {}", e);
-                return Err("Failed to parse response".to_string());
+                Err("Failed to parse response".to_string())
             }
         },
         Err(e) => {
             error!("Failed to get remote command status: {}", e);
-            return Err("Failed to get remote command status".to_string());
+            Err("Failed to get remote command status".to_string())
         }
-    };
+    }
 }
 
 pub fn parse_vehicle_status(vin: &str, data: &Value) -> VehicleStatus {

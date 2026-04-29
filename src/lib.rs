@@ -11,7 +11,6 @@ use mqtt::{
     parse_payload, publish_discovery, publish_state, setup as mqtt_setup, MQTT_CONFIG, QOS,
 };
 use regex::Regex;
-use serde_json;
 use std::{collections::HashMap, fs, sync::LazyLock, time::Duration};
 use tokio::{sync::Mutex, time};
 
@@ -76,7 +75,7 @@ pub async fn run() {
         let client = mutex_client.as_ref().unwrap_or_else(|| {
             panic!("MQTT client is not initialized");
         });
-        match publish_discovery(&client, &vehicle_info, &topic_prefix).await {
+        match publish_discovery(client, &vehicle_info, &topic_prefix).await {
             Ok(_) => {
                 info!("Discovery published");
             }
@@ -86,9 +85,9 @@ pub async fn run() {
         }
     }
     let switch_topic = HashMap::from([
-        ("lock".to_string(), "online".to_string()),
-        ("aircond".to_string(), "online".to_string()),
-        ("petmode".to_string(), "online".to_string()),
+        ("lock", "online".to_string()),
+        ("aircond", "online".to_string()),
+        ("petmode", "online".to_string()),
     ]);
     publish_availability(switch_topic).await;
     {
@@ -97,7 +96,7 @@ pub async fn run() {
             panic!("MQTT client is not initialized");
         });
         match client
-            .subscribe(format!("{}/{}/set", topic_prefix, "lock".to_string()), QOS)
+            .subscribe(format!("{}/{}/set", topic_prefix, "lock"), QOS)
             .await
         {
             Ok(_) => info!("Subscribed to lock topic"),
@@ -106,10 +105,7 @@ pub async fn run() {
             }
         };
         match client
-            .subscribe(
-                format!("{}/{}/set", topic_prefix, "aircond".to_string()),
-                QOS,
-            )
+            .subscribe(format!("{}/{}/set", topic_prefix, "aircond"), QOS)
             .await
         {
             Ok(_) => info!("Subscribed to aircond topic"),
@@ -118,10 +114,7 @@ pub async fn run() {
             }
         };
         match client
-            .subscribe(
-                format!("{}/{}/set", topic_prefix, "petmode".to_string()),
-                QOS,
-            )
+            .subscribe(format!("{}/{}/set", topic_prefix, "petmode"), QOS)
             .await
         {
             Ok(_) => info!("Subscribed to petmode topic"),
@@ -130,10 +123,7 @@ pub async fn run() {
             }
         };
         match client
-            .subscribe(
-                format!("{}/{}/set", topic_prefix, "ac_timer".to_string()),
-                QOS,
-            )
+            .subscribe(format!("{}/{}/set", topic_prefix, "ac_timer"), QOS)
             .await
         {
             Ok(_) => info!("Subscribed to ac_timer topic"),
@@ -142,10 +132,7 @@ pub async fn run() {
             }
         };
         match client
-            .subscribe(
-                format!("{}/{}/set", topic_prefix, "ac_temperature".to_string()),
-                QOS,
-            )
+            .subscribe(format!("{}/{}/set", topic_prefix, "ac_temperature"), QOS)
             .await
         {
             Ok(_) => info!("Subscribed to ac_temperature topic"),
@@ -327,7 +314,7 @@ async fn handle_event(event: rumqttc::Event) {
             } else {
                 return;
             };
-            let switch_topic = HashMap::from([("lock".to_string(), "offline".to_string())]);
+            let switch_topic = HashMap::from([("lock", "offline".to_string())]);
             publish_availability(switch_topic).await;
             *DEBOUNCE_LOCK.lock().await = if command == "1" {
                 "unlock".to_string()
@@ -347,7 +334,7 @@ async fn handle_event(event: rumqttc::Event) {
                     }
                 }
             });
-            let switch_topic = HashMap::from([("lock".to_string(), "online".to_string())]);
+            let switch_topic = HashMap::from([("lock", "online".to_string())]);
             publish_vehicle_status().await;
             publish_availability(switch_topic).await;
         }
@@ -364,7 +351,7 @@ async fn handle_event(event: rumqttc::Event) {
             } else {
                 return;
             };
-            let switch_topic = HashMap::from([("aircond".to_string(), "offline".to_string())]);
+            let switch_topic = HashMap::from([("aircond", "offline".to_string())]);
             publish_availability(switch_topic).await;
             *DEBOUNCE_AC.lock().await = if command == "1" {
                 "on".to_string()
@@ -388,7 +375,7 @@ async fn handle_event(event: rumqttc::Event) {
                     }
                 }
             });
-            let switch_topic = HashMap::from([("aircond".to_string(), "online".to_string())]);
+            let switch_topic = HashMap::from([("aircond", "online".to_string())]);
             publish_vehicle_status().await;
             publish_availability(switch_topic).await;
         }
@@ -624,7 +611,7 @@ async fn publish_vehicle_status() {
     }
 }
 
-async fn publish_availability(topic: HashMap<String, String>) {
+async fn publish_availability(topic: HashMap<&str, String>) {
     let vehicle_info = VEHICLE_INFO.lock().await.clone();
     let brand_name = vehicle_info.brand_name.clone().to_lowercase();
     let last_vin = vehicle_info.showed_vin.get(15..).unwrap_or("").to_string();
