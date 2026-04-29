@@ -97,19 +97,16 @@ pub async fn setup() -> Result<(AsyncClient, EventLoop), Box<dyn std::error::Err
 
 pub async fn parse_payload(event: Event) -> Result<Value, Box<dyn std::error::Error>> {
     match event {
-        Event::Incoming(incoming) => match incoming {
-            rumqttc::Packet::Publish(publish) => {
-                debug!("Received message on topic: {}", publish.topic);
-                debug!("Payload: {:?}", publish.payload);
-                let payload = String::from_utf8_lossy(&publish.payload);
-                let value: Value = json!({
-                    "topic": publish.topic,
-                    "payload": payload,
-                });
-                Ok(value)
-            }
-            _ => Ok(Value::Null),
-        },
+        Event::Incoming(rumqttc::Packet::Publish(publish)) => {
+            debug!("Received message on topic: {}", publish.topic);
+            debug!("Payload: {:?}", publish.payload);
+            let payload = String::from_utf8_lossy(&publish.payload);
+            let value: Value = json!({
+                "topic": publish.topic,
+                "payload": payload,
+            });
+            Ok(value)
+        }
         _ => Ok(Value::Null),
     }
 }

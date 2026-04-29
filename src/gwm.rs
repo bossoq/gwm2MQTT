@@ -383,38 +383,33 @@ fn calc_header(method: &str, url_path: &str, payload_str: &str, headers: HeaderM
 fn sign_calc_get(url: &Url, headers: HeaderMap) -> HeaderMap {
     let mut payload_str = String::new();
     let url_path = url.path();
-    match url.query() {
-        Some(query) => {
-            let mut query = query.split('&').collect::<Vec<&str>>();
-            query.sort();
-            query.iter().for_each(|q| {
-                let mut q = q.split('=');
-                let key = q.next();
-                let value = q.next();
-                if let Some(key) = key {
-                    if let Some(value) = value {
-                        payload_str.push_str(key.to_string().to_ascii_lowercase().as_str());
-                        payload_str.push_str("=");
-                        payload_str.push_str(value);
-                    }
+    if let Some(query) = url.query() {
+        let mut query = query.split('&').collect::<Vec<&str>>();
+        query.sort();
+        query.iter().for_each(|q| {
+            let mut q = q.split('=');
+            let key = q.next();
+            let value = q.next();
+            if let Some(key) = key {
+                if let Some(value) = value {
+                    payload_str.push_str(key.to_string().to_ascii_lowercase().as_str());
+                    payload_str.push('=');
+                    payload_str.push_str(value);
                 }
-            });
-        }
-        None => {}
+            }
+        });
     }
     let re = Regex::new(r"\s+").unwrap_or_else(|e| {
         panic!("Failed to create regex: {}", e);
     });
     let payload_str = re.replace_all(&payload_str, "").to_string();
-    let headers = calc_header("GET", url_path, &payload_str, headers);
-    headers
+    calc_header("GET", url_path, &payload_str, headers)
 }
 
 fn sign_calc_post(payload: &Value, url: &Url, headers: HeaderMap) -> HeaderMap {
-    let payload_str = format!("json={}", payload.to_string()).replace(" ", "");
+    let payload_str = format!("json={}", payload).replace(' ', "");
     let url_path = url.path();
-    let headers = calc_header("POST", url_path, &payload_str, headers);
-    headers
+    calc_header("POST", url_path, &payload_str, headers)
 }
 
 pub async fn login() -> Result<bool, String> {
@@ -496,7 +491,7 @@ pub async fn login() -> Result<bool, String> {
         }
     };
     let mut creds = CREDENTIALS.lock().await;
-    let md5pin = if PIN.unwrap_or("") != "" {
+    let md5pin = if !PIN.unwrap_or("").is_empty() {
         format!("{:X}", compute(PIN.unwrap_or(""))).to_ascii_lowercase()
     } else {
         "".to_string()
@@ -554,7 +549,7 @@ pub async fn check_token() -> (bool, bool) {
             }
         }
     }
-    return (token_valid, token_expired);
+    (token_valid, token_expired)
 }
 
 pub async fn get_accesstoken() -> Result<String, String> {
@@ -1024,7 +1019,7 @@ async fn get_remote_cmd_status(vin: &str, seq_no: &str, remote_type: &str) -> Re
                         "Failed to get remote command status: {}",
                         res["description"].as_str().unwrap_or("Unknown error")
                     );
-                    return Err("Failed to get remote command status".to_string());
+                    Err("Failed to get remote command status".to_string())
                 } else {
                     info!("Remote command status retrieved");
                     if let Some(res_remote_type) = res["data"][0]["remoteType"].as_str() {
@@ -1036,26 +1031,26 @@ async fn get_remote_cmd_status(vin: &str, seq_no: &str, remote_type: &str) -> Re
                             "Response remote type {} does not match expected {}",
                             res_remote_type, remote_type
                         );
-                        return Ok(false);
+                        Ok(false)
                     } else {
                         debug!("No command result data yet for this sequence");
-                        return Ok(false);
+                        Ok(false)
                     }
                 }
             }
             Err(e) => {
                 error!("Failed to parse response: {}", e);
-                return Err("Failed to parse response".to_string());
+                Err("Failed to parse response".to_string())
             }
         },
         Err(e) => {
             error!("Failed to get remote command status: {}", e);
-            return Err("Failed to get remote command status".to_string());
+            Err("Failed to get remote command status".to_string())
         }
-    };
+    }
 }
 
-fn parse_vehicle_status(vin: &str, data: &Value) -> VehicleStatus {
+pub fn parse_vehicle_status(vin: &str, data: &Value) -> VehicleStatus {
     let charge_status_desc = HashMap::from([
         ("0", "Not Charging"),
         ("1", "Charging"),
@@ -1079,74 +1074,76 @@ fn parse_vehicle_status(vin: &str, data: &Value) -> VehicleStatus {
             (key.to_string(), value)
         })
         .collect::<Map<String, Value>>();
+    let null = Value::Null;
+    let get = |key: &str| items.get(key).unwrap_or(&null);
     VehicleStatus {
         vin: vin.to_string(),
-        mileage: items["2103010"].as_i64().unwrap_or(0),
-        soc: items["2013021"].as_i64().unwrap_or(0),
-        range: items["2011007"].as_i64().unwrap_or(0),
-        charge_time: items["2013022"]
+        mileage: get("2103010").as_i64().unwrap_or(0),
+        soc: get("2013021").as_i64().unwrap_or(0),
+        range: get("2011007").as_i64().unwrap_or(0),
+        charge_time: get("2013022")
             .as_str()
             .unwrap_or("0")
             .parse::<i64>()
             .unwrap_or(0),
-        charging_status: items["2041142"].as_str().unwrap_or("0") == "1",
+        charging_status: get("2041142").as_str().unwrap_or("0") == "1",
         charging_status_desc: charge_status_desc
-            .get(&items["2041142"].as_str().unwrap_or("0"))
+            .get(&get("2041142").as_str().unwrap_or("0"))
             .unwrap_or(&"Unknown Mapping")
             .to_string(),
-        charging_port_plugged: items["2042082"].as_str().unwrap_or("0") == "1",
-        ac_status: items["2202001"].as_str().unwrap_or("0") == "1",
-        air_filter_status: items["2078020"].as_str().unwrap_or("0") == "1",
-        unlock_status: items["2208001"].as_str().unwrap_or("0") == "1",
-        fl_door_open: items["2206004"].as_str().unwrap_or("0") == "1",
-        fr_door_open: items["2206002"].as_str().unwrap_or("0") == "1",
-        rl_door_open: items["2206005"].as_str().unwrap_or("0") == "1",
-        rr_door_open: items["2206003"].as_str().unwrap_or("0") == "1",
-        trunk_open: items["2206001"].as_str().unwrap_or("0") == "1",
-        fl_window_open: items["2210002"].as_str().unwrap_or("1") == "0",
-        fr_window_open: items["2210001"].as_str().unwrap_or("1") == "0",
-        rl_window_open: items["2210004"].as_str().unwrap_or("1") == "0",
-        rr_window_open: items["2210003"].as_str().unwrap_or("1") == "0",
-        sunroof_open: items["2210005"].as_str().unwrap_or("3") == "6",
-        fl_tire_pressure: (items["2101001"].as_f64().unwrap_or(0.0) * 14.503773773020923).round()
+        charging_port_plugged: get("2042082").as_str().unwrap_or("0") == "1",
+        ac_status: get("2202001").as_str().unwrap_or("0") == "1",
+        air_filter_status: get("2078020").as_str().unwrap_or("0") == "1",
+        unlock_status: get("2208001").as_str().unwrap_or("0") == "1",
+        fl_door_open: get("2206004").as_str().unwrap_or("0") == "1",
+        fr_door_open: get("2206002").as_str().unwrap_or("0") == "1",
+        rl_door_open: get("2206005").as_str().unwrap_or("0") == "1",
+        rr_door_open: get("2206003").as_str().unwrap_or("0") == "1",
+        trunk_open: get("2206001").as_str().unwrap_or("0") == "1",
+        fl_window_open: get("2210002").as_str().unwrap_or("1") == "0",
+        fr_window_open: get("2210001").as_str().unwrap_or("1") == "0",
+        rl_window_open: get("2210004").as_str().unwrap_or("1") == "0",
+        rr_window_open: get("2210003").as_str().unwrap_or("1") == "0",
+        sunroof_open: get("2210005").as_str().unwrap_or("3") == "6",
+        fl_tire_pressure: (get("2101001").as_f64().unwrap_or(0.0) * 14.503773773020923).round()
             / 100.0,
-        fr_tire_pressure: (items["2101002"].as_f64().unwrap_or(0.0) * 14.503773773020923).round()
+        fr_tire_pressure: (get("2101002").as_f64().unwrap_or(0.0) * 14.503773773020923).round()
             / 100.0,
-        rl_tire_pressure: (items["2101003"].as_f64().unwrap_or(0.0) * 14.503773773020923).round()
+        rl_tire_pressure: (get("2101003").as_f64().unwrap_or(0.0) * 14.503773773020923).round()
             / 100.0,
-        rr_tire_pressure: (items["2101004"].as_f64().unwrap_or(0.0) * 14.503773773020923).round()
+        rr_tire_pressure: (get("2101004").as_f64().unwrap_or(0.0) * 14.503773773020923).round()
             / 100.0,
-        fl_tire_temp: items["2101005"]
+        fl_tire_temp: get("2101005")
             .as_str()
             .unwrap_or("0")
             .parse::<i64>()
             .unwrap_or(0),
-        fr_tire_temp: items["2101006"]
+        fr_tire_temp: get("2101006")
             .as_str()
             .unwrap_or("0")
             .parse::<i64>()
             .unwrap_or(0),
-        rl_tire_temp: items["2101007"]
+        rl_tire_temp: get("2101007")
             .as_str()
             .unwrap_or("0")
             .parse::<i64>()
             .unwrap_or(0),
-        rr_tire_temp: items["2101008"]
+        rr_tire_temp: get("2101008")
             .as_str()
             .unwrap_or("0")
             .parse::<i64>()
             .unwrap_or(0),
-        fl_tire_pressure_alarm: items["2102001"].as_str().unwrap_or("0") == "1",
-        fr_tire_pressure_alarm: items["2102002"].as_str().unwrap_or("0") == "1",
-        rl_tire_pressure_alarm: items["2102003"].as_str().unwrap_or("0") == "1",
-        rr_tire_pressure_alarm: items["2102004"].as_str().unwrap_or("0") == "1",
-        fl_tire_temp_alarm: items["2102007"].as_str().unwrap_or("0") == "1",
-        fr_tire_temp_alarm: items["2102008"].as_str().unwrap_or("0") == "1",
-        rl_tire_temp_alarm: items["2102009"].as_str().unwrap_or("0") == "1",
-        rr_tire_temp_alarm: items["2102010"].as_str().unwrap_or("0") == "1",
-        head_light: items["2204007"].as_str().unwrap_or("0") == "1",
-        left_turn_light: items["2204009"].as_str().unwrap_or("0") == "1",
-        right_turn_light: items["2204010"].as_str().unwrap_or("0") == "1",
+        fl_tire_pressure_alarm: get("2102001").as_str().unwrap_or("0") == "1",
+        fr_tire_pressure_alarm: get("2102002").as_str().unwrap_or("0") == "1",
+        rl_tire_pressure_alarm: get("2102003").as_str().unwrap_or("0") == "1",
+        rr_tire_pressure_alarm: get("2102004").as_str().unwrap_or("0") == "1",
+        fl_tire_temp_alarm: get("2102007").as_str().unwrap_or("0") == "1",
+        fr_tire_temp_alarm: get("2102008").as_str().unwrap_or("0") == "1",
+        rl_tire_temp_alarm: get("2102009").as_str().unwrap_or("0") == "1",
+        rr_tire_temp_alarm: get("2102010").as_str().unwrap_or("0") == "1",
+        head_light: get("2204007").as_str().unwrap_or("0") == "1",
+        left_turn_light: get("2204009").as_str().unwrap_or("0") == "1",
+        right_turn_light: get("2204010").as_str().unwrap_or("0") == "1",
         longitude: data["longitude"].as_f64().unwrap_or(0.0),
         latitude: data["latitude"].as_f64().unwrap_or(0.0),
         updated_at: DateTime::from_timestamp_millis(data["updateTime"].as_i64().unwrap_or(0))
