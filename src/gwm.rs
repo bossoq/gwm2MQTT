@@ -1186,6 +1186,11 @@ pub fn parse_vehicle_status(vin: &str, data: &Value) -> VehicleStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// Serializes tests that mutate the global `CACHED_BASE_URL`, preventing
+    /// parallel test runs from interfering with each other.
+    static CACHE_TEST_SERIAL: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     #[test]
     fn default_base_url_is_parseable() {
@@ -1199,6 +1204,7 @@ mod tests {
 
     #[test]
     fn set_base_url_cache_updates_get_base_url() {
+        let _guard = CACHE_TEST_SERIAL.lock().unwrap();
         set_base_url_cache("https://cached.test.example/".to_string());
         assert_eq!(get_base_url(), "https://cached.test.example/");
         // Reset so other tests see a clean state
@@ -1209,6 +1215,7 @@ mod tests {
 
     #[test]
     fn get_base_url_returns_default_when_cache_empty_and_no_file() {
+        let _guard = CACHE_TEST_SERIAL.lock().unwrap();
         // Clear cache first
         if let Ok(mut g) = CACHED_BASE_URL.write() {
             *g = None;
