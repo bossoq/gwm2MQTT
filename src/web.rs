@@ -10,7 +10,8 @@ use serde_json::{json, Value};
 use std::fs;
 use tokio::time::{self, Duration};
 
-use crate::gwm::{send_climate_command, send_lock_command, CRED_FILE};
+use crate::crypto;
+use crate::gwm::{send_climate_command, send_lock_command};
 use crate::mqtt::MQTT_CONFIG_FILE;
 use crate::{DEBOUNCE_AC, DEBOUNCE_LOCK, MQTT_PUBLISH, STATE_FILE, VEHICLE_INFO, VEHICLE_STATUS};
 
@@ -42,6 +43,7 @@ fn router() -> Router {
         .route("/api/command/petmode", post(api_command_petmode))
         .route("/api/command/ac_time", post(api_command_ac_time))
         .route("/api/command/ac_temp", post(api_command_ac_temp))
+        .route("/api/restart", post(api_restart))
 }
 
 // ── Static file handlers ──────────────────────────────────────────────────────
@@ -111,10 +113,7 @@ async fn api_config() -> impl IntoResponse {
     }
 
     // Credentials from file (password/pin masked, presence indicated)
-    let creds = fs::read_to_string(CRED_FILE)
-        .ok()
-        .and_then(|c| serde_json::from_str::<Value>(&c).ok())
-        .unwrap_or(json!({}));
+    let creds = crypto::read_cred_json().unwrap_or(json!({}));
 
     let email = creds["email"].as_str().unwrap_or("").to_string();
     let vehicle_vin = creds["vehicleVin"].as_str().unwrap_or("").to_string();
@@ -193,10 +192,7 @@ struct CredentialsRequest {
 
 async fn api_config_credentials(Json(req): Json<CredentialsRequest>) -> impl IntoResponse {
     // Merge with existing file so blank fields don't erase saved values
-    let existing = fs::read_to_string(CRED_FILE)
-        .ok()
-        .and_then(|c| serde_json::from_str::<Value>(&c).ok())
-        .unwrap_or(json!({}));
+    let existing = crypto::read_cred_json().unwrap_or(json!({}));
 
     let email = if req.email.is_empty() {
         existing["email"].as_str().unwrap_or("").to_string()
@@ -222,20 +218,15 @@ async fn api_config_credentials(Json(req): Json<CredentialsRequest>) -> impl Int
         "refreshInterval": req.refresh_interval,
     });
 
-    match serde_json::to_string_pretty(&config) {
-        Ok(content) => match fs::write(CRED_FILE, content) {
-            Ok(_) => {
-                info!("Credentials updated via dashboard");
-                Json(
-                    json!({"success": true, "message": "Account settings saved. Restart to apply."}),
-                )
-            }
-            Err(e) => {
-                error!("Failed to write credentials: {e}");
-                Json(json!({"success": false, "message": format!("Write failed: {e}")}))
-            }
-        },
-        Err(e) => Json(json!({"success": false, "message": format!("Encode error: {e}")})),
+    match crypto::write_cred_json(&config) {
+        Ok(_) => {
+            info!("Credentials updated via dashboard");
+            Json(json!({"success": true, "message": "Account settings saved. Restart to apply."}))
+        }
+        Err(e) => {
+            error!("Failed to write credentials: {e}");
+            Json(json!({"success": false, "message": format!("Write failed: {e}")}))
+        }
     }
 }
 
@@ -422,6 +413,17 @@ async fn api_command_ac_temp(Json(req): Json<AcTempCommand>) -> impl IntoRespons
     }
     *MQTT_PUBLISH.lock().await = true;
     Json(json!({"success": true, "message": format!("AC temperature set to {}°C", req.temp)}))
+}
+
+// ── API: service restart ──────────────────────────────────────────────────────
+
+async fn api_restart() -> impl IntoResponse {
+    info!("Service restart requested via dashboard");
+    tokio::spawn(async {
+        time::sleep(Duration::from_millis(500)).await;
+        std::process::exit(0);
+    });
+    Json(json!({"success": true, "message": "Service is restarting…"}))
 }
 
 #[cfg(test)]

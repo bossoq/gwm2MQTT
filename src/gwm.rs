@@ -8,7 +8,7 @@ use reqwest::{header::HeaderMap, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
-use std::{collections::HashMap, fs, sync::LazyLock};
+use std::{collections::HashMap, sync::LazyLock};
 use tokio::sync::Mutex;
 use url::Url;
 use urlencoding::encode;
@@ -17,7 +17,6 @@ use uuid::Uuid;
 static EMAIL: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("EMAIL"));
 static PASSWORD: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("PASSWORD"));
 static PIN: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("PIN"));
-pub(crate) const CRED_FILE: &str = "/opt/gwm2mqtt/credentials.json";
 const BASEURL: &str = "https://ap-h5-gateway.gwmcloud.com/app-api/api/";
 const LOGIN: &str = "v1.0/userAuth/loginAccount";
 const REFRESHTOKEN: &str = "v1.0/userAuth/refreshToken";
@@ -413,12 +412,7 @@ fn sign_calc_post(payload: &Value, url: &Url, headers: HeaderMap) -> HeaderMap {
 }
 
 fn read_cred_file() -> Result<Value, String> {
-    let content = fs::read_to_string(CRED_FILE).map_err(|_| {
-        "No credentials found. Set EMAIL/PASSWORD at build time or save via the dashboard."
-            .to_string()
-    })?;
-    serde_json::from_str::<Value>(&content)
-        .map_err(|e| format!("Failed to parse credentials file: {e}"))
+    crate::crypto::read_cred_json()
 }
 
 pub async fn login() -> Result<bool, String> {

@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 ExecStart=/usr/bin/gwm2mqtt
-Restart=on-failure
+Restart=always
 RestartSec=5s
 StartLimitBurst=5
 StartLimitIntervalSec=10min
