@@ -17,21 +17,28 @@ use uuid::Uuid;
 static EMAIL: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("EMAIL"));
 static PASSWORD: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("PASSWORD"));
 static PIN: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("PIN"));
-const BASEURL: &str = "https://ap-h5-gateway.gwmcloud.com/app-api/api/";
-const LOGIN: &str = "v1.0/userAuth/loginAccount";
-const REFRESHTOKEN: &str = "v1.0/userAuth/refreshToken";
-const ACQUIREVEHICLES: &str = "v1.0/vehicle/acquireVehicles";
-const GETVEHICLESTATUS: &str = "v2.0/vehicle/getLastStatus";
-const GETREMOTECMDSTATUS: &str = "v1.0/vehicle/getRemoteCtrlResultT5";
-const SENDREMOTECMD: &str = "v1.0/vehicle/T5/sendCmd";
+const BASEURL: &str = "https://ap-h5-gateway.gwmcloud.com/";
+const LOGIN: &str = "app-api/api/v1.0/userAuth/loginAccount";
+const REFRESHTOKEN: &str = "app-api/api/v1.0/userAuth/refreshToken";
+const ACQUIREVEHICLES: &str = "app-api/api/v1.0/vehicle/acquireVehicles";
+const GETVEHICLESTATUS: &str = "app-api/api/v2.0/vehicle/getLastStatus";
+const GETREMOTECMDSTATUS: &str = "app-api/api/v1.0/vehicle/getRemoteCtrlResultT5";
+const SENDREMOTECMD: &str = "app-api/api/v1.0/vehicle/T5/sendCmd";
 
 static STD_HEADER: LazyLock<HeaderMap> = LazyLock::new(|| {
     let mut header = HeaderMap::new();
     header.insert(
         "Host",
-        "ap-h5-gateway.gwmcloud.com".parse().unwrap_or_else(|e| {
-            panic!("Failed to parse header: {}", e);
-        }),
+        Url::parse(BASEURL)
+            .unwrap_or_else(|e| {
+                panic!("Failed to parse base URL: {}", e);
+            })
+            .host_str()
+            .unwrap_or_default()
+            .parse()
+            .unwrap_or_else(|e| {
+                panic!("Failed to parse header: {}", e);
+            }),
     );
     header.insert(
         "rs",
