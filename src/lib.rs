@@ -51,9 +51,9 @@ static MQTT_CLIENT: LazyLock<Mutex<Option<rumqttc::AsyncClient>>> =
     LazyLock::new(|| Mutex::new(None));
 
 #[tokio::main]
-pub async fn run() {
-    tokio::spawn(async {
-        if let Err(e) = web::start().await {
+pub async fn run(web_port: u16) {
+    tokio::spawn(async move {
+        if let Err(e) = web::start(web_port).await {
             error!("Web server error: {}", e);
         }
     });

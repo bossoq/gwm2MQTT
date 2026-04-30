@@ -19,11 +19,7 @@ static SETTINGS_HTML: &str = include_str!("../static/settings.html");
 static STYLE_CSS: &str = include_str!("../static/style.css");
 static APP_JS: &str = include_str!("../static/app.js");
 
-pub async fn start() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let port: u16 = option_env!("WEB_PORT")
-        .unwrap_or("8080")
-        .parse()
-        .unwrap_or(8080);
+pub async fn start(port: u16) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr = format!("0.0.0.0:{port}");
     info!("Web dashboard listening on http://{addr}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
