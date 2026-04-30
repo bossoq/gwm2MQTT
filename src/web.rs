@@ -249,16 +249,12 @@ async fn api_config_credentials(Json(req): Json<CredentialsRequest>) -> impl Int
             let tmp_path = format!("{}.tmp", crate::gwm::BASE_URL_FILE);
             if let Err(e) = fs::write(&tmp_path, &content) {
                 error!("Failed to write base URL config (tmp): {e}");
-                return Json(
-                    json!({"success": false, "message": format!("Write failed: {e}")}),
-                );
+                return Json(json!({"success": false, "message": format!("Write failed: {e}")}));
             }
             if let Err(e) = fs::rename(&tmp_path, target) {
                 let _ = fs::remove_file(&tmp_path);
                 error!("Failed to rename base URL config: {e}");
-                return Json(
-                    json!({"success": false, "message": format!("Write failed: {e}")}),
-                );
+                return Json(json!({"success": false, "message": format!("Write failed: {e}")}));
             }
         }
         Err(e) => return Json(json!({"success": false, "message": format!("Encode error: {e}")})),
