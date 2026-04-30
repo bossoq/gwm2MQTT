@@ -3,7 +3,6 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
 };
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
-use rand::{rngs::OsRng, RngCore};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -24,8 +23,7 @@ fn derive_key() -> [u8; 32] {
             fs::read_to_string(FALLBACK_KEY_FILE)
                 .map(|s| s.trim().to_string())
                 .unwrap_or_else(|_| {
-                    let mut bytes = [0u8; 32];
-                    OsRng.fill_bytes(&mut bytes);
+                    let bytes: [u8; 32] = rand::random();
                     let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
                     let _ = fs::write(FALLBACK_KEY_FILE, &hex);
                     hex
@@ -41,8 +39,7 @@ fn encrypt(plaintext: &str) -> Result<String, String> {
     let key = derive_key();
     let cipher = Aes256Gcm::new_from_slice(&key).map_err(|e| format!("Cipher init failed: {e}"))?;
 
-    let mut nonce_bytes = [0u8; 12];
-    OsRng.fill_bytes(&mut nonce_bytes);
+    let nonce_bytes: [u8; 12] = rand::random();
     let nonce = Nonce::from_slice(&nonce_bytes);
 
     let ciphertext = cipher
