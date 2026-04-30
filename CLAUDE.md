@@ -22,7 +22,7 @@ cargo clippy
 cargo fmt
 ```
 
-There are no automated tests in this project.
+Tests exist for `web.rs` and `gwm.rs`. Run with `cargo test`.
 
 ## Configuration
 
@@ -36,15 +36,16 @@ cargo build --release
 
 Alternatively, config files under `/opt/gwm2mqtt/` are read at runtime as fallback:
 - `/opt/gwm2mqtt/mqtt.json` — MQTT broker settings
-- `/opt/gwm2mqtt/credentials.json` — encrypted GWM credentials and runtime settings (AES-256-GCM)
+- `/opt/gwm2mqtt/credentials.json` — encrypted GWM credentials (AES-256-GCM): `email`, `password`, `pin`, `vehicleVin`, `refreshInterval`
+- `/opt/gwm2mqtt/baseurl.json` — **plain JSON** `{"baseUrl": "https://..."}` — not encrypted; required field
 - `/opt/gwm2mqtt/configuration.json` — cached vehicle info (`VehicleInfo`)
 - `/opt/gwm2mqtt/state_{VIN}.json` — persisted vehicle state (`VehicleStatus`), one file per vehicle
 - `/opt/gwm2mqtt/logs/` — rolling log files
 
-Runtime-configurable settings (saved via web dashboard, stored in `credentials.json`):
-- `baseUrl` — GWM API base URL (default: `http://localhost:8080/`); auto-normalised (adds `https://` prefix and trailing `/` if missing)
-- `vehicleVin` — VIN filter (optional)
-- `refreshInterval` — polling interval in seconds
+Runtime-configurable settings (saved via web dashboard):
+- `baseUrl` — GWM API base URL (**required**; stored in plain `baseurl.json`, not encrypted); default: `https://example.api.com/`; auto-normalised (adds `https://` prefix and trailing `/` if missing); cached in memory after first read, updated immediately when saved
+- `vehicleVin` — VIN filter (optional; stored in `credentials.json`)
+- `refreshInterval` — polling interval in seconds (stored in `credentials.json`)
 
 Environment variables (all compile-time via `option_env!`):
 - `EMAIL`, `PASSWORD`, `PIN` — GWM Cloud credentials (PIN is MD5-hashed for remote commands)
@@ -87,4 +88,4 @@ Served on the port passed to `main` (default `3000`). Static files are embedded 
 
 ### API target
 
-The GWM API base URL is runtime-configurable via the settings page (stored as `baseUrl` in `credentials.json`). `get_base_url()` in `gwm.rs` reads it at call time, falling back to `DEFAULT_BASEURL` (`http://localhost:8080/`). Region-specific headers (`country: TH`, `language: th`, etc.) are in the `STD_HEADER` static in `gwm.rs` and must be updated there for other regions.
+The GWM API base URL is runtime-configurable via the settings page. It is stored as plain JSON in `/opt/gwm2mqtt/baseurl.json` (not encrypted). `get_base_url()` in `gwm.rs` reads from an in-memory `RwLock` cache on every call; the cache is populated on first access from the file and updated via `set_base_url_cache()` whenever the settings page saves a new value. `DEFAULT_BASEURL` is `"https://example.api.com/"`. The field is **required** — the server validates scheme (`http`/`https`) and presence of a host before accepting a save. If the file is missing or the URL is invalid, API calls return `Err` (logged) rather than panicking, so the web service stays available for reconfiguration. Region-specific headers (`country: TH`, `language: th`, etc.) are in the `STD_HEADER` static in `gwm.rs` and must be updated there for other regions.
