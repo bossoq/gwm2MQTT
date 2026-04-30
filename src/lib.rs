@@ -1,6 +1,7 @@
 #![recursion_limit = "256"]
 pub mod gwm;
 mod mqtt;
+pub(crate) mod web;
 
 use gwm::{
     check_token, get_vehicle_status, get_vehicles, login, send_climate_command, send_lock_command,
@@ -15,7 +16,7 @@ use std::{collections::HashMap, fs, sync::LazyLock, time::Duration};
 use tokio::{sync::Mutex, time};
 
 const CONFIG_FILE: &str = "/opt/gwm2mqtt/configuration.json";
-const STATE_FILE: &str = "/opt/gwm2mqtt/state.json";
+pub(crate) const STATE_FILE: &str = "/opt/gwm2mqtt/state.json";
 static REFRESH_INTERVAL: LazyLock<u64> = LazyLock::new(|| {
     option_env!("REFRESH_INTERVAL")
         .unwrap_or("10")
@@ -23,9 +24,9 @@ static REFRESH_INTERVAL: LazyLock<u64> = LazyLock::new(|| {
         .unwrap_or(10)
 });
 static VEHICLE_VIN: LazyLock<&str> = LazyLock::new(|| option_env!("VEHICLE_VIN").unwrap_or(""));
-static VEHICLE_INFO: LazyLock<Mutex<VehicleInfo>> =
+pub(crate) static VEHICLE_INFO: LazyLock<Mutex<VehicleInfo>> =
     LazyLock::new(|| Mutex::new(VehicleInfo::default()));
-static VEHICLE_STATUS: LazyLock<Mutex<VehicleStatus>> = LazyLock::new(|| {
+pub(crate) static VEHICLE_STATUS: LazyLock<Mutex<VehicleStatus>> = LazyLock::new(|| {
     let vehicle_status = match fs::read_to_string(STATE_FILE) {
         Ok(content) => match serde_json::from_str::<VehicleStatus>(&content) {
             Ok(vehicle_status) => vehicle_status,
@@ -41,14 +42,21 @@ static VEHICLE_STATUS: LazyLock<Mutex<VehicleStatus>> = LazyLock::new(|| {
     };
     Mutex::new(vehicle_status)
 });
-static MQTT_PUBLISH: LazyLock<Mutex<bool>> = LazyLock::new(|| Mutex::new(false));
-static DEBOUNCE_LOCK: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new("".to_string()));
-static DEBOUNCE_AC: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new("".to_string()));
+pub(crate) static MQTT_PUBLISH: LazyLock<Mutex<bool>> = LazyLock::new(|| Mutex::new(false));
+pub(crate) static DEBOUNCE_LOCK: LazyLock<Mutex<String>> =
+    LazyLock::new(|| Mutex::new("".to_string()));
+pub(crate) static DEBOUNCE_AC: LazyLock<Mutex<String>> =
+    LazyLock::new(|| Mutex::new("".to_string()));
 static MQTT_CLIENT: LazyLock<Mutex<Option<rumqttc::AsyncClient>>> =
     LazyLock::new(|| Mutex::new(None));
 
 #[tokio::main]
-pub async fn run() {
+pub async fn run(web_port: u16) {
+    tokio::spawn(async move {
+        if let Err(e) = web::start(web_port).await {
+            error!("Web server error: {}", e);
+        }
+    });
     let (main_client, mut eventloop) = mqtt_setup().await.unwrap_or_else(|e| {
         panic!("Failed to set up MQTT client: {}", e);
     });

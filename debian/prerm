@@ -1,0 +1,12 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    remove|purge)
+        systemctl stop gwm2mqtt.service || true
+        systemctl disable gwm2mqtt.service || true
+        ;;
+    upgrade)
+        systemctl stop gwm2mqtt.service || true
+        ;;
+esac

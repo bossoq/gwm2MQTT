@@ -1,0 +1,47 @@
+name: Build
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-build-
+
+      - name: Install cargo-deb
+        run: command -v cargo-deb >/dev/null 2>&1 || cargo install cargo-deb --locked
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Build .deb package
+        run: cargo deb --no-build
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: gwm2mqtt-linux-x86_64
+          path: target/release/gwm2mqtt
+
+      - name: Upload deb package
+        uses: actions/upload-artifact@v4
+        with:
+          name: gwm2mqtt-deb
+          path: target/debian/*.deb

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GWM Dashboard – Settings</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <h1>&#x1F697; GWM Dashboard</h1>
+    <nav>
+      <a href="/">Dashboard</a>
+      <a href="/settings" class="active">Settings</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="card" style="max-width:620px;margin:0 auto">
+
+      <p class="notice">
+        &#x26A0;&#xFE0F; All changes are saved to config files and take effect after a service restart.
+      </p>
+
+      <!-- GWM Account -->
+      <div class="form-section">
+        <div class="form-section-title">GWM Account</div>
+
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="email" placeholder="your@email.com" autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label>Password &nbsp;<span id="pw-hint" style="font-size:0.7rem;color:var(--text-muted)"></span></label>
+          <input type="password" id="password" placeholder="Leave blank to keep existing" autocomplete="current-password">
+        </div>
+        <div class="form-group">
+          <label>Vehicle PIN &nbsp;<span id="pin-hint" style="font-size:0.7rem;color:var(--text-muted)"></span></label>
+          <input type="password" id="pin" placeholder="Leave blank to keep existing" maxlength="8">
+        </div>
+        <div class="form-group">
+          <label>Vehicle VIN filter <span style="font-size:0.7rem;color:var(--border)">(optional – first 3 + last 4 chars)</span></label>
+          <input type="text" id="vehicle-vin" placeholder="Leave blank to use first vehicle" maxlength="17">
+        </div>
+        <div class="form-group">
+          <label>Refresh interval (seconds)</label>
+          <input type="number" id="refresh-interval" min="5" max="300" value="10">
+        </div>
+
+        <button class="btn btn-primary" onclick="saveCredentials()">Save Account Settings</button>
+        <div id="creds-feedback" class="feedback-msg"></div>
+      </div>
+
+      <!-- MQTT -->
+      <div class="form-section">
+        <div class="form-section-title">MQTT Broker</div>
+
+        <div class="form-group">
+          <label>Broker host</label>
+          <input type="text" id="mqtt-broker" placeholder="localhost">
+        </div>
+        <div class="form-group">
+          <label>Port</label>
+          <input type="number" id="mqtt-port" placeholder="1883" min="1" max="65535">
+        </div>
+        <div class="form-group">
+          <label>Username <span style="font-size:0.7rem;color:var(--border)">(optional)</span></label>
+          <input type="text" id="mqtt-user" placeholder="Leave blank if no auth" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>Password <span style="font-size:0.7rem;color:var(--border)">(optional)</span></label>
+          <input type="password" id="mqtt-password" placeholder="Leave blank to keep existing" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>Home Assistant discovery prefix</label>
+          <input type="text" id="mqtt-discovery" placeholder="homeassistant">
+        </div>
+        <div class="form-group">
+          <label>Topic prefix</label>
+          <input type="text" id="mqtt-prefix" placeholder="gwm2mqtt">
+        </div>
+
+        <button class="btn btn-primary" onclick="saveMqtt()">Save MQTT Settings</button>
+        <div id="mqtt-feedback" class="feedback-msg"></div>
+      </div>
+
+    </div>
+  </main>
+
+  <div class="toast-container" id="toasts"></div>
+  <script src="/app.js"></script>
+  <script>
+    async function loadSettings() {
+      try {
+        const data = await fetch('/api/config').then(r => r.json());
+
+        const c = data.credentials || {};
+        document.getElementById('email').value = c.email || '';
+        document.getElementById('pw-hint').textContent  = c.hasPassword ? '(password saved)' : '(not set)';
+        document.getElementById('pin-hint').textContent = c.hasPin      ? '(PIN saved)'      : '(not set)';
+        document.getElementById('vehicle-vin').value       = c.vehicleVin       || '';
+        document.getElementById('refresh-interval').value  = c.refreshInterval  || 10;
+
+        const m = data.mqtt || {};
+        document.getElementById('mqtt-broker').value    = m.broker        || '';
+        document.getElementById('mqtt-port').value      = m.port          || 1883;
+        document.getElementById('mqtt-user').value      = m.user          || '';
+        document.getElementById('mqtt-discovery').value = m.discoveryTopic || 'homeassistant';
+        document.getElementById('mqtt-prefix').value    = m.topicPrefix   || 'gwm2mqtt';
+      } catch (e) {
+        showToast('Failed to load settings', 'error');
+      }
+    }
+
+    async function saveCredentials() {
+      const result = await apiPost('/api/config/credentials', {
+        email:           document.getElementById('email').value,
+        password:        document.getElementById('password').value,
+        pin:             document.getElementById('pin').value,
+        vehicleVin:      document.getElementById('vehicle-vin').value,
+        refreshInterval: parseInt(document.getElementById('refresh-interval').value) || 10,
+      });
+      const el = document.getElementById('creds-feedback');
+      el.textContent   = result.message;
+      el.style.color   = result.success ? 'var(--success)' : 'var(--danger)';
+      if (result.success) {
+        document.getElementById('password').value = '';
+        document.getElementById('pin').value      = '';
+        loadSettings();
+      }
+    }
+
+    async function saveMqtt() {
+      const result = await apiPost('/api/config/mqtt', {
+        broker:        document.getElementById('mqtt-broker').value,
+        port:          parseInt(document.getElementById('mqtt-port').value) || 1883,
+        user:          document.getElementById('mqtt-user').value,
+        password:      document.getElementById('mqtt-password').value,
+        discoveryTopic: document.getElementById('mqtt-discovery').value,
+        topicPrefix:   document.getElementById('mqtt-prefix').value,
+      });
+      const el = document.getElementById('mqtt-feedback');
+      el.textContent = result.message;
+      el.style.color = result.success ? 'var(--success)' : 'var(--danger)';
+      if (result.success) {
+        document.getElementById('mqtt-password').value = '';
+      }
+    }
+
+    loadSettings();
+  </script>
+</body>
+</html>

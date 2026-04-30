@@ -1,0 +1,14 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    configure|abort-upgrade)
+        mkdir -p /opt/gwm2mqtt/logs
+        chmod 750 /opt/gwm2mqtt
+        chmod 750 /opt/gwm2mqtt/logs
+
+        systemctl daemon-reload || true
+        systemctl enable gwm2mqtt.service || true
+        systemctl start gwm2mqtt.service || true
+        ;;
+esac

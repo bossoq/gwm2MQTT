@@ -211,3 +211,135 @@ fn vehicle_status_default_values() {
     assert_eq!(s.mileage, 0);
     assert_eq!(s.soc, 0);
 }
+
+#[test]
+fn updated_at_parsed_from_update_time() {
+    let data = json!({
+        "items": [],
+        "longitude": 0.0,
+        "latitude": 0.0,
+        "updateTime": 1700000000000i64  // 2023-11-14T22:13:20Z
+    });
+    let status = parse_vehicle_status("VIN", &data);
+    assert_eq!(status.updated_at.timestamp(), 1700000000);
+}
+
+#[test]
+fn unknown_charging_code_maps_to_unknown() {
+    let data = json!({
+        "items": [{"code": "2041142", "value": "99"}],
+        "longitude": 0.0, "latitude": 0.0, "updateTime": 0i64
+    });
+    let status = parse_vehicle_status("VIN", &data);
+    assert_eq!(status.charging_status_desc, "Unknown Mapping");
+    assert!(!status.charging_status); // "99" != "1"
+}
+
+#[test]
+fn all_windows_open_when_value_is_zero() {
+    let data = json!({
+        "items": [
+            {"code": "2210002", "value": "0"},  // fl open
+            {"code": "2210001", "value": "0"},  // fr open
+            {"code": "2210004", "value": "0"},  // rl open
+            {"code": "2210003", "value": "0"},  // rr open
+            {"code": "2210005", "value": "6"},  // sunroof open
+        ],
+        "longitude": 0.0, "latitude": 0.0, "updateTime": 0i64
+    });
+    let s = parse_vehicle_status("VIN", &data);
+    assert!(s.fl_window_open);
+    assert!(s.fr_window_open);
+    assert!(s.rl_window_open);
+    assert!(s.rr_window_open);
+    assert!(s.sunroof_open);
+}
+
+#[test]
+fn all_windows_closed_when_value_is_one() {
+    let data = json!({
+        "items": [
+            {"code": "2210002", "value": "1"},  // fl closed
+            {"code": "2210001", "value": "1"},  // fr closed
+            {"code": "2210004", "value": "1"},  // rl closed
+            {"code": "2210003", "value": "1"},  // rr closed
+            {"code": "2210005", "value": "3"},  // sunroof closed
+        ],
+        "longitude": 0.0, "latitude": 0.0, "updateTime": 0i64
+    });
+    let s = parse_vehicle_status("VIN", &data);
+    assert!(!s.fl_window_open);
+    assert!(!s.fr_window_open);
+    assert!(!s.rl_window_open);
+    assert!(!s.rr_window_open);
+    assert!(!s.sunroof_open);
+}
+
+#[test]
+fn tire_temp_alarms_all_four_positions() {
+    let data = json!({
+        "items": [
+            {"code": "2102007", "value": "1"},  // fl
+            {"code": "2102008", "value": "0"},  // fr
+            {"code": "2102009", "value": "1"},  // rl
+            {"code": "2102010", "value": "0"},  // rr
+        ],
+        "longitude": 0.0, "latitude": 0.0, "updateTime": 0i64
+    });
+    let s = parse_vehicle_status("VIN", &data);
+    assert!(s.fl_tire_temp_alarm);
+    assert!(!s.fr_tire_temp_alarm);
+    assert!(s.rl_tire_temp_alarm);
+    assert!(!s.rr_tire_temp_alarm);
+}
+
+#[test]
+fn zero_kpa_tire_pressure_converts_to_zero_psi() {
+    let data = json!({
+        "items": [
+            {"code": "2101001", "value": 0.0},
+            {"code": "2101002", "value": 0.0},
+            {"code": "2101003", "value": 0.0},
+            {"code": "2101004", "value": 0.0},
+        ],
+        "longitude": 0.0, "latitude": 0.0, "updateTime": 0i64
+    });
+    let s = parse_vehicle_status("VIN", &data);
+    assert_eq!(s.fl_tire_pressure, 0.0);
+    assert_eq!(s.rr_tire_pressure, 0.0);
+}
+
+#[test]
+fn vehicle_status_serializes_to_camel_case() {
+    let s = VehicleStatus::default();
+    let json = serde_json::to_value(&s).expect("serialize");
+    // Verify the camelCase keys the frontend JavaScript expects
+    assert!(json.get("unlockStatus").is_some(), "unlockStatus");
+    assert!(json.get("flDoorOpen").is_some(), "flDoorOpen");
+    assert!(json.get("acStatus").is_some(), "acStatus");
+    assert!(json.get("chargingStatus").is_some(), "chargingStatus");
+    assert!(json.get("acTemp").is_some(), "acTemp");
+    assert!(json.get("acTime").is_some(), "acTime");
+    assert!(json.get("updatedAt").is_some(), "updatedAt");
+    // Snake-case keys must NOT appear
+    assert!(json.get("unlock_status").is_none(), "no snake_case");
+    assert!(json.get("fl_door_open").is_none(), "no snake_case");
+}
+
+#[test]
+fn vehicle_status_json_round_trip() {
+    let original = parse_vehicle_status("ROUNDTRIP123456789", &sample_data());
+    let json_str = serde_json::to_string(&original).expect("serialize");
+    let restored: VehicleStatus = serde_json::from_str(&json_str).expect("deserialize");
+    assert_eq!(restored.vin, original.vin);
+    assert_eq!(restored.mileage, original.mileage);
+    assert_eq!(restored.soc, original.soc);
+    assert_eq!(restored.range, original.range);
+    assert_eq!(restored.ac_temp, original.ac_temp);
+    assert_eq!(restored.ac_time, original.ac_time);
+    assert_eq!(restored.petmode, original.petmode);
+    assert_eq!(restored.fl_tire_pressure, original.fl_tire_pressure);
+    assert_eq!(restored.unlock_status, original.unlock_status);
+    assert_eq!(restored.longitude, original.longitude);
+    assert_eq!(restored.latitude, original.latitude);
+}

@@ -18,7 +18,7 @@ pub struct MQTTConfiguration {
     pub topic_prefix: String,
 }
 
-const MQTT_CONFIG_FILE: &str = "/opt/gwm2mqtt/mqtt.json";
+pub(crate) const MQTT_CONFIG_FILE: &str = "/opt/gwm2mqtt/mqtt.json";
 pub static MQTT_CONFIG: LazyLock<MQTTConfiguration> = LazyLock::new(|| {
     let mqtt_broker = option_env!("MQTT_BROKER");
     let mqtt_port = option_env!("MQTT_PORT");

@@ -1,0 +1,15 @@
+[Unit]
+Description=GWM Cloud to MQTT bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/gwm2mqtt
+Restart=on-failure
+RestartSec=5s
+StartLimitBurst=5
+StartLimitIntervalSec=10min
+
+[Install]
+WantedBy=multi-user.target
