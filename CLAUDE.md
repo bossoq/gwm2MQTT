@@ -43,7 +43,7 @@ Alternatively, config files under `/opt/gwm2mqtt/` are read at runtime as fallba
 - `/opt/gwm2mqtt/logs/` — rolling log files
 
 Runtime-configurable settings (saved via web dashboard):
-- `baseUrl` — GWM API base URL (**required**; stored in plain `baseurl.json`, not encrypted); default: `https://example.api.com/`; auto-normalised (adds `https://` prefix and trailing `/` if missing); cached in memory after first read, updated immediately when saved
+- `baseUrl` — GWM API base URL (**required**; stored in plain `baseurl.json`, not encrypted); default: `https://example.api.com/`; auto-normalised (validates scheme and host, enforces trailing `/`); cached in memory after first read, updated immediately when saved
 - `vehicleVin` — VIN filter (optional; stored in `credentials.json`)
 - `refreshInterval` — polling interval in seconds (stored in `credentials.json`)
 

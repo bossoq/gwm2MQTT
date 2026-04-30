@@ -62,7 +62,13 @@ fn validate_base_url(raw: &str) -> Result<String, String> {
     if parsed.host_str().map(|h| h.is_empty()).unwrap_or(true) {
         return Err("URL must include a host".to_string());
     }
-    Ok(raw.to_string())
+    // Ensure trailing slash so Url::join appends paths correctly
+    let normalized = if raw.ends_with('/') {
+        raw.to_string()
+    } else {
+        format!("{raw}/")
+    };
+    Ok(normalized)
 }
 
 // ── Static file handlers ──────────────────────────────────────────────────────
