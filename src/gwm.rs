@@ -8,7 +8,11 @@ use reqwest::{header::HeaderMap, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
-use std::{collections::HashMap, fs, sync::{LazyLock, RwLock}};
+use std::{
+    collections::HashMap,
+    fs,
+    sync::{LazyLock, RwLock},
+};
 use tokio::sync::Mutex;
 use url::Url;
 use urlencoding::encode;
@@ -21,8 +25,7 @@ static PIN: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("PIN"));
 pub(crate) const DEFAULT_BASEURL: &str = "https://example.api.com/";
 pub(crate) const BASE_URL_FILE: &str = "/opt/gwm2mqtt/baseurl.json";
 
-static CACHED_BASE_URL: LazyLock<RwLock<Option<String>>> =
-    LazyLock::new(|| RwLock::new(None));
+static CACHED_BASE_URL: LazyLock<RwLock<Option<String>>> = LazyLock::new(|| RwLock::new(None));
 
 pub(crate) fn get_base_url() -> String {
     if let Ok(guard) = CACHED_BASE_URL.read() {
@@ -1213,7 +1216,10 @@ mod tests {
         // BASE_URL_FILE does not exist in test env, so default is returned
         let url = get_base_url();
         assert!(!url.is_empty());
-        assert!(Url::parse(&url).is_ok(), "returned URL must be parseable: {url}");
+        assert!(
+            Url::parse(&url).is_ok(),
+            "returned URL must be parseable: {url}"
+        );
         // Restore cache to None for other tests
         if let Ok(mut g) = CACHED_BASE_URL.write() {
             *g = None;
