@@ -8,6 +8,7 @@ use log::{error, info};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::fs;
+use std::path::Path;
 use tokio::time::{self, Duration};
 use url::Url;
 
@@ -228,9 +229,30 @@ async fn api_config_credentials(Json(req): Json<CredentialsRequest>) -> impl Int
     let base_url_config = json!({"baseUrl": base_url});
     match serde_json::to_string_pretty(&base_url_config) {
         Ok(content) => {
-            if let Err(e) = fs::write(crate::gwm::BASE_URL_FILE, content) {
-                error!("Failed to write base URL config: {e}");
-                return Json(json!({"success": false, "message": format!("Write failed: {e}")}));
+            // Ensure parent directory exists before writing
+            let target = Path::new(crate::gwm::BASE_URL_FILE);
+            if let Some(dir) = target.parent() {
+                if let Err(e) = fs::create_dir_all(dir) {
+                    error!("Failed to create config directory: {e}");
+                    return Json(
+                        json!({"success": false, "message": format!("Directory error: {e}")}),
+                    );
+                }
+            }
+            // Atomic write: write to a temp file then rename
+            let tmp_path = format!("{}.tmp", crate::gwm::BASE_URL_FILE);
+            if let Err(e) = fs::write(&tmp_path, &content) {
+                error!("Failed to write base URL config (tmp): {e}");
+                return Json(
+                    json!({"success": false, "message": format!("Write failed: {e}")}),
+                );
+            }
+            if let Err(e) = fs::rename(&tmp_path, target) {
+                let _ = fs::remove_file(&tmp_path);
+                error!("Failed to rename base URL config: {e}");
+                return Json(
+                    json!({"success": false, "message": format!("Write failed: {e}")}),
+                );
             }
         }
         Err(e) => return Json(json!({"success": false, "message": format!("Encode error: {e}")})),
