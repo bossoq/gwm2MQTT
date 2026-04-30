@@ -136,6 +136,19 @@
       return s;
     }
 
+    async function triggerRestart(feedbackId) {
+      const el = document.getElementById(feedbackId);
+      el.style.color = 'var(--text-muted)';
+      el.textContent = 'Saved — restarting service…';
+      const btn = document.getElementById('restart-btn');
+      btn.disabled = true;
+      btn.textContent = 'Restarting…';
+      try {
+        await fetch('/api/restart', { method: 'POST' });
+      } catch (_) { /* expected — connection drops on restart */ }
+      pollUntilBack(feedbackId);
+    }
+
     async function saveCredentials() {
       const rawUrl = document.getElementById('base-url').value;
       const baseUrl = normalizeBaseUrl(rawUrl);
@@ -155,13 +168,15 @@
         baseUrl,
       });
       const el = document.getElementById('creds-feedback');
-      el.textContent   = result.message;
-      el.style.color   = result.success ? 'var(--success)' : 'var(--danger)';
-      if (result.success) {
-        document.getElementById('password').value = '';
-        document.getElementById('pin').value      = '';
-        loadSettings();
+      if (!result.success) {
+        el.textContent = result.message;
+        el.style.color = 'var(--danger)';
+        return;
       }
+      document.getElementById('password').value = '';
+      document.getElementById('pin').value      = '';
+      loadSettings();
+      triggerRestart('creds-feedback');
     }
 
     async function saveMqtt() {
@@ -174,11 +189,13 @@
         topicPrefix:   document.getElementById('mqtt-prefix').value,
       });
       const el = document.getElementById('mqtt-feedback');
-      el.textContent = result.message;
-      el.style.color = result.success ? 'var(--success)' : 'var(--danger)';
-      if (result.success) {
-        document.getElementById('mqtt-password').value = '';
+      if (!result.success) {
+        el.textContent = result.message;
+        el.style.color = 'var(--danger)';
+        return;
       }
+      document.getElementById('mqtt-password').value = '';
+      triggerRestart('mqtt-feedback');
     }
 
     async function confirmRestart() {
@@ -193,21 +210,21 @@
         await fetch('/api/restart', { method: 'POST' });
       } catch (_) { /* expected — connection drops on restart */ }
       fb.textContent = 'Service restarting — reconnecting…';
-      pollUntilBack();
+      pollUntilBack('restart-feedback');
     }
 
-    function pollUntilBack() {
-      const fb  = document.getElementById('restart-feedback');
+    function pollUntilBack(feedbackId) {
+      const fb  = document.getElementById(feedbackId);
       const btn = document.getElementById('restart-btn');
       const interval = setInterval(async () => {
         try {
           const r = await fetch('/api/status');
           if (r.ok) {
             clearInterval(interval);
-            fb.style.color   = 'var(--success)';
-            fb.textContent   = 'Service restarted successfully.';
-            btn.disabled     = false;
-            btn.textContent  = 'Restart Service';
+            fb.style.color  = 'var(--success)';
+            fb.textContent  = 'Service restarted successfully.';
+            btn.disabled    = false;
+            btn.textContent = 'Restart Service';
             showToast('Service restarted', 'success');
           }
         } catch (_) { /* still down */ }
