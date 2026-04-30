@@ -9,6 +9,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::fs;
 use tokio::time::{self, Duration};
+use url::Url;
 
 use crate::crypto;
 use crate::gwm::{send_climate_command, send_lock_command};
@@ -44,6 +45,23 @@ fn router() -> Router {
         .route("/api/command/ac_time", post(api_command_ac_time))
         .route("/api/command/ac_temp", post(api_command_ac_temp))
         .route("/api/restart", post(api_restart))
+}
+
+// ── Validation helpers ────────────────────────────────────────────────────────
+
+fn validate_base_url(raw: &str) -> Result<String, String> {
+    if raw.is_empty() {
+        return Err("Base URL is required".to_string());
+    }
+    let parsed = Url::parse(raw).map_err(|_| format!("Invalid URL: {raw}"))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        s => return Err(format!("URL scheme must be http or https, got: {s}")),
+    }
+    if parsed.host_str().map(|h| h.is_empty()).unwrap_or(true) {
+        return Err("URL must include a host".to_string());
+    }
+    Ok(raw.to_string())
 }
 
 // ── Static file handlers ──────────────────────────────────────────────────────
@@ -129,7 +147,7 @@ async fn api_config() -> impl IntoResponse {
     let refresh_interval = creds["refreshInterval"].as_i64().unwrap_or(10);
     let has_password = creds["password"].as_str().is_some_and(|s| !s.is_empty());
     let has_pin = creds["pin"].as_str().is_some_and(|s| !s.is_empty());
-    let base_url = creds["baseUrl"].as_str().unwrap_or("").to_string();
+    let base_url = crate::gwm::get_base_url();
 
     Json(json!({
         "mqtt": mqtt_val,
@@ -202,6 +220,23 @@ struct CredentialsRequest {
 }
 
 async fn api_config_credentials(Json(req): Json<CredentialsRequest>) -> impl IntoResponse {
+    let base_url = match validate_base_url(&req.base_url) {
+        Ok(u) => u,
+        Err(e) => return Json(json!({"success": false, "message": e})),
+    };
+
+    let base_url_config = json!({"baseUrl": base_url});
+    match serde_json::to_string_pretty(&base_url_config) {
+        Ok(content) => {
+            if let Err(e) = fs::write(crate::gwm::BASE_URL_FILE, content) {
+                error!("Failed to write base URL config: {e}");
+                return Json(json!({"success": false, "message": format!("Write failed: {e}")}));
+            }
+        }
+        Err(e) => return Json(json!({"success": false, "message": format!("Encode error: {e}")})),
+    }
+    crate::gwm::set_base_url_cache(base_url);
+
     let existing = crypto::read_cred_json().unwrap_or(json!({}));
 
     let email = if req.email.is_empty() {
@@ -226,7 +261,6 @@ async fn api_config_credentials(Json(req): Json<CredentialsRequest>) -> impl Int
         "pin": pin,
         "vehicleVin": req.vehicle_vin,
         "refreshInterval": req.refresh_interval,
-        "baseUrl": req.base_url,
     });
 
     match crypto::write_cred_json(&config) {
@@ -753,5 +787,113 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
         let ct = res.headers().get("content-type").unwrap().to_str().unwrap();
         assert!(ct.contains("javascript"), "content-type was: {ct}");
+    }
+
+    // ── validate_base_url unit tests ─────────────────────────────────────────
+
+    #[test]
+    fn validate_base_url_accepts_https() {
+        assert!(validate_base_url("https://api.example.com/").is_ok());
+    }
+
+    #[test]
+    fn validate_base_url_accepts_http() {
+        assert!(validate_base_url("http://localhost:8080/").is_ok());
+    }
+
+    #[test]
+    fn validate_base_url_rejects_empty() {
+        let err = validate_base_url("").unwrap_err();
+        assert!(err.contains("required"), "expected 'required' in: {err}");
+    }
+
+    #[test]
+    fn validate_base_url_rejects_non_http_scheme() {
+        assert!(validate_base_url("ftp://example.com/").is_err());
+    }
+
+    #[test]
+    fn validate_base_url_rejects_plain_string() {
+        assert!(validate_base_url("not-a-url").is_err());
+    }
+
+    // ── Credentials endpoint validation tests ────────────────────────────────
+
+    #[tokio::test]
+    async fn credentials_post_with_invalid_base_url_returns_error() {
+        let res = router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/config/credentials")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"email":"","password":"","pin":"","vehicleVin":"","refreshInterval":10,"baseUrl":"not-valid"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let json = body_json(res).await;
+        assert_eq!(json["success"], false, "expected failure for invalid URL");
+    }
+
+    #[tokio::test]
+    async fn credentials_post_with_empty_base_url_returns_error() {
+        let res = router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/config/credentials")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"email":"","password":"","pin":"","vehicleVin":"","refreshInterval":10,"baseUrl":""}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let json = body_json(res).await;
+        assert_eq!(json["success"], false, "expected failure for empty URL");
+    }
+
+    #[tokio::test]
+    async fn credentials_post_with_ftp_scheme_returns_error() {
+        let res = router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/config/credentials")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"email":"","password":"","pin":"","vehicleVin":"","refreshInterval":10,"baseUrl":"ftp://example.com/"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let json = body_json(res).await;
+        assert_eq!(json["success"], false, "expected failure for ftp scheme");
+    }
+
+    #[tokio::test]
+    async fn config_credentials_section_has_base_url_field() {
+        let res = router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/config")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let json = body_json(res).await;
+        let creds = &json["credentials"];
+        assert!(creds.get("baseUrl").is_some(), "missing 'baseUrl' field");
+        assert!(
+            !creds["baseUrl"].as_str().unwrap_or("").is_empty(),
+            "baseUrl must be non-empty (falls back to default)"
+        );
     }
 }

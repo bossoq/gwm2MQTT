@@ -8,7 +8,7 @@ use reqwest::{header::HeaderMap, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
-use std::{collections::HashMap, sync::LazyLock};
+use std::{collections::HashMap, fs, sync::{LazyLock, RwLock}};
 use tokio::sync::Mutex;
 use url::Url;
 use urlencoding::encode;
@@ -17,14 +17,35 @@ use uuid::Uuid;
 static EMAIL: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("EMAIL"));
 static PASSWORD: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("PASSWORD"));
 static PIN: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("PIN"));
-const DEFAULT_BASEURL: &str = "http://localhost:8080/";
 
-fn get_base_url() -> String {
-    crate::crypto::read_cred_json()
+pub(crate) const DEFAULT_BASEURL: &str = "https://example.api.com/";
+pub(crate) const BASE_URL_FILE: &str = "/opt/gwm2mqtt/baseurl.json";
+
+static CACHED_BASE_URL: LazyLock<RwLock<Option<String>>> =
+    LazyLock::new(|| RwLock::new(None));
+
+pub(crate) fn get_base_url() -> String {
+    if let Ok(guard) = CACHED_BASE_URL.read() {
+        if let Some(url) = guard.as_ref() {
+            return url.clone();
+        }
+    }
+    let url = fs::read_to_string(BASE_URL_FILE)
         .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
         .and_then(|v| v["baseUrl"].as_str().map(String::from))
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| DEFAULT_BASEURL.to_string())
+        .unwrap_or_else(|| DEFAULT_BASEURL.to_string());
+    if let Ok(mut guard) = CACHED_BASE_URL.write() {
+        *guard = Some(url.clone());
+    }
+    url
+}
+
+pub fn set_base_url_cache(url: String) {
+    if let Ok(mut guard) = CACHED_BASE_URL.write() {
+        *guard = Some(url);
+    }
 }
 const LOGIN: &str = "app-api/api/v1.0/userAuth/loginAccount";
 const REFRESHTOKEN: &str = "app-api/api/v1.0/userAuth/refreshToken";
@@ -452,13 +473,9 @@ pub async fn login() -> Result<bool, String> {
     let email = email_owned.as_str();
     let password = password_owned.as_str();
     let url = Url::parse(&get_base_url())
-        .unwrap_or_else(|e| {
-            panic!("Failed to parse base URL: {}", e);
-        })
+        .map_err(|e| format!("Invalid base URL: {e}"))?
         .join(LOGIN)
-        .unwrap_or_else(|e| {
-            panic!("Failed to parse login URL: {}", e);
-        });
+        .map_err(|e| format!("Failed to build login URL: {e}"))?;
     let mut headers = STD_HEADER.clone();
     headers.insert(
         "accesstoken",
@@ -638,13 +655,9 @@ pub async fn get_accesstoken() -> Result<String, String> {
     }
     info!("Token is expired, refreshing");
     let url = Url::parse(&get_base_url())
-        .unwrap_or_else(|e| {
-            panic!("Failed to parse base URL: {}", e);
-        })
+        .map_err(|e| format!("Invalid base URL: {e}"))?
         .join(REFRESHTOKEN)
-        .unwrap_or_else(|e| {
-            panic!("Failed to parse refresh token URL: {}", e);
-        });
+        .map_err(|e| format!("Failed to build refresh token URL: {e}"))?;
     let mut headers = STD_HEADER.clone();
     headers.insert(
         "accesstoken",
@@ -705,13 +718,9 @@ pub async fn get_vehicles() -> Result<Vec<VehicleInfo>, String> {
         Err(e) => return Err(e),
     };
     let url = Url::parse(&get_base_url())
-        .unwrap_or_else(|e| {
-            panic!("Failed to parse base URL: {}", e);
-        })
+        .map_err(|e| format!("Invalid base URL: {e}"))?
         .join(ACQUIREVEHICLES)
-        .unwrap_or_else(|e| {
-            panic!("Failed to parse acquire vehicles URL: {}", e);
-        });
+        .map_err(|e| format!("Failed to build vehicles URL: {e}"))?;
     let mut headers = STD_HEADER.clone();
     headers.insert(
         "accesstoken",
@@ -772,17 +781,11 @@ pub async fn get_vehicle_status(vin: &str, model_id: i64) -> Result<VehicleStatu
         Err(e) => return Err(e),
     };
     let url = Url::parse(&get_base_url())
-        .unwrap_or_else(|e| {
-            panic!("Failed to parse base URL: {}", e);
-        })
+        .map_err(|e| format!("Invalid base URL: {e}"))?
         .join(GETVEHICLESTATUS)
-        .unwrap_or_else(|e| {
-            panic!("Failed to parse get vehicle status URL: {}", e);
-        })
+        .map_err(|e| format!("Failed to build vehicle status URL: {e}"))?
         .join(&format!("?vin={}&modelId={}", vin, model_id))
-        .unwrap_or_else(|e| {
-            panic!("Failed to parse get vehicle status URL with query: {}", e);
-        });
+        .map_err(|e| format!("Failed to build vehicle status URL with query: {e}"))?;
     let mut headers = STD_HEADER.clone();
     headers.insert(
         "accesstoken",
@@ -835,13 +838,9 @@ pub async fn send_climate_command(
         return Err("No PIN set".to_string());
     }
     let url = Url::parse(&get_base_url())
-        .unwrap_or_else(|e| {
-            panic!("Failed to parse base URL: {}", e);
-        })
+        .map_err(|e| format!("Invalid base URL: {e}"))?
         .join(SENDREMOTECMD)
-        .unwrap_or_else(|e| {
-            panic!("Failed to parse send remote command URL: {}", e);
-        });
+        .map_err(|e| format!("Failed to build climate command URL: {e}"))?;
     let seq_no = format!("{}1234", Uuid::new_v4().to_string().replace("-", ""));
     let mut headers = STD_HEADER.clone();
     headers.insert(
@@ -933,13 +932,9 @@ pub async fn send_lock_command(vin: &str, switch_order: &str) -> Result<bool, St
         return Err("No PIN set".to_string());
     }
     let url = Url::parse(&get_base_url())
-        .unwrap_or_else(|e| {
-            panic!("Failed to parse base URL: {}", e);
-        })
+        .map_err(|e| format!("Invalid base URL: {e}"))?
         .join(SENDREMOTECMD)
-        .unwrap_or_else(|e| {
-            panic!("Failed to parse send remote command URL: {}", e);
-        });
+        .map_err(|e| format!("Failed to build lock command URL: {e}"))?;
     let seq_no = format!("{}1234", Uuid::new_v4().to_string().replace("-", ""));
     let mut headers = STD_HEADER.clone();
     headers.insert(
@@ -1023,20 +1018,11 @@ async fn get_remote_cmd_status(vin: &str, seq_no: &str, remote_type: &str) -> Re
         Err(e) => return Err(e),
     };
     let url = Url::parse(&get_base_url())
-        .unwrap_or_else(|e| {
-            panic!("Failed to parse base URL: {}", e);
-        })
+        .map_err(|e| format!("Invalid base URL: {e}"))?
         .join(GETREMOTECMDSTATUS)
-        .unwrap_or_else(|e| {
-            panic!("Failed to parse get remote command status URL: {}", e);
-        })
+        .map_err(|e| format!("Failed to build remote cmd status URL: {e}"))?
         .join(&format!("?seqNo={}", seq_no))
-        .unwrap_or_else(|e| {
-            panic!(
-                "Failed to parse get remote command status URL with query: {}",
-                e
-            );
-        });
+        .map_err(|e| format!("Failed to build remote cmd status URL with query: {e}"))?;
     let mut headers = STD_HEADER.clone();
     headers.insert(
         "accesstoken",
@@ -1191,5 +1177,46 @@ pub fn parse_vehicle_status(vin: &str, data: &Value) -> VehicleStatus {
             .unwrap_or(Utc::now()),
         // ac_time, ac_temp, petmode are local-only; caller must restore from global state
         ..VehicleStatus::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_base_url_is_parseable() {
+        assert!(Url::parse(DEFAULT_BASEURL).is_ok());
+    }
+
+    #[test]
+    fn default_base_url_value() {
+        assert_eq!(DEFAULT_BASEURL, "https://example.api.com/");
+    }
+
+    #[test]
+    fn set_base_url_cache_updates_get_base_url() {
+        set_base_url_cache("https://cached.test.example/".to_string());
+        assert_eq!(get_base_url(), "https://cached.test.example/");
+        // Reset so other tests see a clean state
+        if let Ok(mut g) = CACHED_BASE_URL.write() {
+            *g = None;
+        }
+    }
+
+    #[test]
+    fn get_base_url_returns_default_when_cache_empty_and_no_file() {
+        // Clear cache first
+        if let Ok(mut g) = CACHED_BASE_URL.write() {
+            *g = None;
+        }
+        // BASE_URL_FILE does not exist in test env, so default is returned
+        let url = get_base_url();
+        assert!(!url.is_empty());
+        assert!(Url::parse(&url).is_ok(), "returned URL must be parseable: {url}");
+        // Restore cache to None for other tests
+        if let Ok(mut g) = CACHED_BASE_URL.write() {
+            *g = None;
+        }
     }
 }
