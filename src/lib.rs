@@ -9,7 +9,9 @@ use gwm::{
 };
 use gwm::{VehicleInfo, VehicleStatus};
 use log::{debug, error, info};
-use mqtt::{parse_payload, publish_discovery, publish_state, setup as mqtt_setup, MQTT_CONFIG, QOS};
+use mqtt::{
+    parse_payload, publish_discovery, publish_state, setup as mqtt_setup, MQTT_CONFIG, QOS,
+};
 use regex::Regex;
 use std::{fs, sync::LazyLock, time::Duration};
 use tokio::{sync::Mutex, time};
@@ -75,7 +77,11 @@ fn load_vehicle_status(showed_vin: &str) -> VehicleStatus {
 
 /// Apply debounce overrides to a status clone before publishing.
 /// Clears the debounce sentinel once the API confirms the expected state.
-fn apply_debounce(debounce_lock: &mut String, debounce_ac: &mut String, status: &mut VehicleStatus) {
+fn apply_debounce(
+    debounce_lock: &mut String,
+    debounce_ac: &mut String,
+    status: &mut VehicleStatus,
+) {
     if debounce_lock == "lock" {
         if !status.unlock_status {
             *debounce_lock = String::new();
@@ -167,17 +173,18 @@ pub async fn run(web_port: u16) {
                     .await
                 {
                     Ok(_) => {}
-                    Err(e) => error!(
-                        "Failed to subscribe to {}/{}/set: {}",
-                        topic_prefix, cmd, e
-                    ),
+                    Err(e) => error!("Failed to subscribe to {}/{}/set: {}", topic_prefix, cmd, e),
                 }
             }
         }
     }
 
-    publish_all_availability(&[("lock", "online"), ("aircond", "online"), ("petmode", "online")])
-        .await;
+    publish_all_availability(&[
+        ("lock", "online"),
+        ("aircond", "online"),
+        ("petmode", "online"),
+    ])
+    .await;
 
     loop {
         update_all_vehicle_status().await;
@@ -212,9 +219,7 @@ async fn setup() -> Result<(), String> {
         let suffix4 = env_vin.get(env_vin.len().saturating_sub(4)..).unwrap_or("");
         let v: Vec<_> = all_vehicles
             .into_iter()
-            .filter(|vi| {
-                vi.showed_vin.starts_with(prefix3) && vi.showed_vin.ends_with(suffix4)
-            })
+            .filter(|vi| vi.showed_vin.starts_with(prefix3) && vi.showed_vin.ends_with(suffix4))
             .collect();
         if v.is_empty() {
             return Err("Vehicle with specified VIN not found".to_string());
@@ -227,7 +232,10 @@ async fn setup() -> Result<(), String> {
     for vehicle_info in filtered {
         let mut status = load_vehicle_status(&vehicle_info.showed_vin);
         if !status.vin.is_empty() && status.vin != vehicle_info.vin {
-            info!("State VIN mismatch for {}, resetting", vehicle_info.showed_vin);
+            info!(
+                "State VIN mismatch for {}, resetting",
+                vehicle_info.showed_vin
+            );
             status = VehicleStatus::default();
         }
         info!(
@@ -287,11 +295,11 @@ async fn handle_event(event: rumqttc::Event) {
         found
     };
 
-    let (showed_vin, internal_vin, vehicle_status, debounce_lock_val, capture_topic) =
-        match matched {
-            Some(m) => m,
-            None => return,
-        };
+    let (showed_vin, internal_vin, vehicle_status, debounce_lock_val, capture_topic) = match matched
+    {
+        Some(m) => m,
+        None => return,
+    };
 
     match capture_topic.as_str() {
         "lock" => {
@@ -310,7 +318,10 @@ async fn handle_event(event: rumqttc::Event) {
             publish_vehicle_availability(&showed_vin, &[("lock", "offline")]).await;
             {
                 let mut vehicles = VEHICLES.lock().await;
-                if let Some(vs) = vehicles.iter_mut().find(|vs| vs.info.showed_vin == showed_vin) {
+                if let Some(vs) = vehicles
+                    .iter_mut()
+                    .find(|vs| vs.info.showed_vin == showed_vin)
+                {
                     vs.debounce_lock = if command == "1" {
                         "unlock".to_string()
                     } else {
@@ -326,8 +337,9 @@ async fn handle_event(event: rumqttc::Event) {
                     Err(e) => {
                         error!("Failed to send lock command: {}", e);
                         let mut vehicles = VEHICLES.lock().await;
-                        if let Some(vs) =
-                            vehicles.iter_mut().find(|vs| vs.info.showed_vin == showed_vin_clone)
+                        if let Some(vs) = vehicles
+                            .iter_mut()
+                            .find(|vs| vs.info.showed_vin == showed_vin_clone)
                         {
                             vs.debounce_lock = String::new();
                         }
@@ -351,9 +363,7 @@ async fn handle_event(event: rumqttc::Event) {
                 && (!vehicle_status.ac_status || debounce_ac_val == "off")
             {
                 "1"
-            } else if command == "OFF"
-                && (vehicle_status.ac_status || debounce_ac_val == "on")
-            {
+            } else if command == "OFF" && (vehicle_status.ac_status || debounce_ac_val == "on") {
                 "0"
             } else {
                 return;
@@ -361,7 +371,10 @@ async fn handle_event(event: rumqttc::Event) {
             publish_vehicle_availability(&showed_vin, &[("aircond", "offline")]).await;
             let (oper_time, oper_temp) = {
                 let mut vehicles = VEHICLES.lock().await;
-                match vehicles.iter_mut().find(|vs| vs.info.showed_vin == showed_vin) {
+                match vehicles
+                    .iter_mut()
+                    .find(|vs| vs.info.showed_vin == showed_vin)
+                {
                     Some(vs) => {
                         vs.debounce_ac = if command == "1" {
                             "on".to_string()
@@ -381,8 +394,9 @@ async fn handle_event(event: rumqttc::Event) {
                     Err(e) => {
                         error!("Failed to send aircond command: {}", e);
                         let mut vehicles = VEHICLES.lock().await;
-                        if let Some(vs) =
-                            vehicles.iter_mut().find(|vs| vs.info.showed_vin == showed_vin_clone)
+                        if let Some(vs) = vehicles
+                            .iter_mut()
+                            .find(|vs| vs.info.showed_vin == showed_vin_clone)
                         {
                             vs.debounce_ac = String::new();
                         }
@@ -399,7 +413,10 @@ async fn handle_event(event: rumqttc::Event) {
             {
                 info!("Setting aircond timer to {}", oper_time);
                 let mut vehicles = VEHICLES.lock().await;
-                if let Some(vs) = vehicles.iter_mut().find(|vs| vs.info.showed_vin == showed_vin) {
+                if let Some(vs) = vehicles
+                    .iter_mut()
+                    .find(|vs| vs.info.showed_vin == showed_vin)
+                {
                     vs.status.ac_time = oper_time;
                     if let Ok(s) = serde_json::to_string(&vs.status) {
                         let _ = fs::write(state_file_path(&showed_vin), s);
@@ -419,7 +436,10 @@ async fn handle_event(event: rumqttc::Event) {
             {
                 info!("Setting temperature to {}", oper_temp);
                 let mut vehicles = VEHICLES.lock().await;
-                if let Some(vs) = vehicles.iter_mut().find(|vs| vs.info.showed_vin == showed_vin) {
+                if let Some(vs) = vehicles
+                    .iter_mut()
+                    .find(|vs| vs.info.showed_vin == showed_vin)
+                {
                     vs.status.ac_temp = oper_temp;
                     if let Ok(s) = serde_json::to_string(&vs.status) {
                         let _ = fs::write(state_file_path(&showed_vin), s);
@@ -444,7 +464,10 @@ async fn handle_event(event: rumqttc::Event) {
             info!("Setting pet mode to {} for {}", command, showed_vin);
             let oper_temp = {
                 let mut vehicles = VEHICLES.lock().await;
-                match vehicles.iter_mut().find(|vs| vs.info.showed_vin == showed_vin) {
+                match vehicles
+                    .iter_mut()
+                    .find(|vs| vs.info.showed_vin == showed_vin)
+                {
                     Some(vs) => {
                         vs.status.petmode = command;
                         if let Ok(s) = serde_json::to_string(&vs.status) {
@@ -492,8 +515,9 @@ async fn handle_event(event: rumqttc::Event) {
                         }
                         {
                             let mut v = VEHICLES.lock().await;
-                            if let Some(vs) =
-                                v.iter_mut().find(|vs| vs.info.showed_vin == showed_vin_clone)
+                            if let Some(vs) = v
+                                .iter_mut()
+                                .find(|vs| vs.info.showed_vin == showed_vin_clone)
                             {
                                 vs.debounce_ac = "on".to_string();
                             }
@@ -503,8 +527,9 @@ async fn handle_event(event: rumqttc::Event) {
                             Err(e) => {
                                 error!("Pet mode AC failed: {e}");
                                 let mut v = VEHICLES.lock().await;
-                                if let Some(vs) =
-                                    v.iter_mut().find(|vs| vs.info.showed_vin == showed_vin_clone)
+                                if let Some(vs) = v
+                                    .iter_mut()
+                                    .find(|vs| vs.info.showed_vin == showed_vin_clone)
                                 {
                                     vs.debounce_ac = String::new();
                                 }
@@ -520,8 +545,9 @@ async fn handle_event(event: rumqttc::Event) {
                 let showed_vin_clone = showed_vin.clone();
                 {
                     let mut vehicles = VEHICLES.lock().await;
-                    if let Some(vs) =
-                        vehicles.iter_mut().find(|vs| vs.info.showed_vin == showed_vin)
+                    if let Some(vs) = vehicles
+                        .iter_mut()
+                        .find(|vs| vs.info.showed_vin == showed_vin)
                     {
                         vs.debounce_ac = "off".to_string();
                     }
@@ -532,8 +558,9 @@ async fn handle_event(event: rumqttc::Event) {
                         Err(e) => {
                             error!("Pet mode AC off failed: {e}");
                             let mut v = VEHICLES.lock().await;
-                            if let Some(vs) =
-                                v.iter_mut().find(|vs| vs.info.showed_vin == showed_vin_clone)
+                            if let Some(vs) = v
+                                .iter_mut()
+                                .find(|vs| vs.info.showed_vin == showed_vin_clone)
                             {
                                 vs.debounce_ac = String::new();
                             }
@@ -570,7 +597,10 @@ pub(crate) async fn update_single_vehicle_status(showed_vin: &str) {
     match get_vehicle_status(&vin, model_id).await {
         Ok(mut new_status) => {
             let mut vehicles = VEHICLES.lock().await;
-            if let Some(vs) = vehicles.iter_mut().find(|vs| vs.info.showed_vin == showed_vin) {
+            if let Some(vs) = vehicles
+                .iter_mut()
+                .find(|vs| vs.info.showed_vin == showed_vin)
+            {
                 new_status.ac_time = vs.status.ac_time;
                 new_status.ac_temp = vs.status.ac_temp;
                 new_status.petmode = vs.status.petmode;

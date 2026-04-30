@@ -24,7 +24,11 @@ fn derive_key() -> [u8; 32] {
                 .map(|s| s.trim().to_string())
                 .unwrap_or_else(|_| {
                     let bytes: [u8; 32] = rand::random();
-                    let hex: String = bytes.iter().fold(String::with_capacity(64), |mut acc, b| { use std::fmt::Write; let _ = write!(acc, "{b:02x}"); acc });
+                    let hex: String = bytes.iter().fold(String::with_capacity(64), |mut acc, b| {
+                        use std::fmt::Write;
+                        let _ = write!(acc, "{b:02x}");
+                        acc
+                    });
                     let _ = fs::write(FALLBACK_KEY_FILE, &hex);
                     hex
                 })

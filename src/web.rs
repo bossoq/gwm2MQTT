@@ -259,9 +259,7 @@ async fn api_command_lock(Json(req): Json<LockCommand>) -> impl IntoResponse {
     let (internal_vin, showed_vin) = {
         let mut vehicles = VEHICLES.lock().await;
         match find_vehicle_mut(&mut vehicles, req.vin.as_deref()) {
-            None => {
-                return Json(json!({"success": false, "message": "Vehicle not found"}))
-            }
+            None => return Json(json!({"success": false, "message": "Vehicle not found"})),
             Some(vs) => {
                 vs.debounce_lock = if command == "1" {
                     "unlock".to_string()
@@ -279,7 +277,9 @@ async fn api_command_lock(Json(req): Json<LockCommand>) -> impl IntoResponse {
             Err(e) => {
                 error!("Lock command failed: {e}");
                 let mut vehicles = VEHICLES.lock().await;
-                if let Some(vs) = vehicles.iter_mut().find(|vs| vs.info.showed_vin == showed_vin)
+                if let Some(vs) = vehicles
+                    .iter_mut()
+                    .find(|vs| vs.info.showed_vin == showed_vin)
                 {
                     vs.debounce_lock = String::new();
                 }
@@ -335,7 +335,9 @@ async fn api_command_ac(Json(req): Json<AcCommand>) -> impl IntoResponse {
             Err(e) => {
                 error!("AC command failed: {e}");
                 let mut vehicles = VEHICLES.lock().await;
-                if let Some(vs) = vehicles.iter_mut().find(|vs| vs.info.showed_vin == showed_vin)
+                if let Some(vs) = vehicles
+                    .iter_mut()
+                    .find(|vs| vs.info.showed_vin == showed_vin)
                 {
                     vs.debounce_ac = String::new();
                 }
@@ -371,7 +373,11 @@ async fn api_command_petmode(Json(req): Json<PetmodeCommand>) -> impl IntoRespon
                     let _ = fs::write(state_file_path(&vs.info.showed_vin), s);
                 }
                 vs.mqtt_publish = true;
-                (vs.info.vin.clone(), vs.info.showed_vin.clone(), vs.status.ac_temp)
+                (
+                    vs.info.vin.clone(),
+                    vs.info.showed_vin.clone(),
+                    vs.status.ac_temp,
+                )
             }
         }
     };
@@ -406,9 +412,7 @@ async fn api_command_petmode(Json(req): Json<PetmodeCommand>) -> impl IntoRespon
                     Err(e) => {
                         error!("Pet mode AC failed: {e}");
                         let mut v = VEHICLES.lock().await;
-                        if let Some(vs) =
-                            v.iter_mut().find(|vs| vs.info.showed_vin == showed_vin)
-                        {
+                        if let Some(vs) = v.iter_mut().find(|vs| vs.info.showed_vin == showed_vin) {
                             vs.debounce_ac = String::new();
                         }
                     }
@@ -505,12 +509,12 @@ async fn api_restart() -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gwm::{VehicleInfo, VehicleStatus};
+    use crate::VehicleState;
     use axum::{
         body::Body,
         http::{Request, StatusCode},
     };
-    use crate::gwm::{VehicleInfo, VehicleStatus};
-    use crate::VehicleState;
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
