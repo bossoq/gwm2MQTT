@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GWM Dashboard</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <h1>&#x1F697; GWM Dashboard</h1>
+    <nav>
+      <a href="/" class="active">Dashboard</a>
+      <a href="/settings">Settings</a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Vehicle info bar -->
+    <div class="card" style="margin-bottom:var(--gap)">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div>
+          <div class="vehicle-name" id="vehicle-name">Connecting...</div>
+          <div class="vehicle-vin"  id="vehicle-vin"></div>
+        </div>
+        <div class="last-updated" id="last-updated"></div>
+      </div>
+    </div>
+
+    <!-- Battery + Commands -->
+    <div class="grid grid-2" style="margin-bottom:var(--gap)">
+
+      <!-- Battery -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Battery</span>
+          <span class="badge badge-off" id="charging-badge">–</span>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:8px">
+          <span class="value-big" id="soc-value">–</span>
+          <span class="value-unit">%</span>
+        </div>
+        <div class="progress">
+          <div class="progress-bar" id="soc-bar" style="width:0%"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:0.8rem;color:var(--text-muted)">
+          <span>Range&nbsp;<strong id="range-value" style="color:var(--text)">–</strong> km</span>
+          <span id="charge-time-label" style="color:var(--text-muted)"></span>
+        </div>
+        <div style="margin-top:10px;font-size:0.775rem;color:var(--text-muted)">
+          Mileage&nbsp;<strong id="mileage-value" style="color:var(--text)">–</strong> km
+        </div>
+      </div>
+
+      <!-- Commands -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Commands</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+
+          <button class="cmd-btn" id="btn-lock" onclick="toggleLock()">
+            <span id="lock-icon">&#x1F512;</span>
+            <span id="lock-label">Lock</span>
+          </button>
+
+          <button class="cmd-btn" id="btn-ac" onclick="toggleAc()">
+            <span id="ac-icon">&#x2603;&#xFE0F;</span>
+            <span id="ac-label">AC Off</span>
+          </button>
+
+          <button class="cmd-btn" id="btn-petmode" onclick="togglePetmode()">
+            <span>&#x1F43E;</span>
+            <span id="petmode-label">Pet Mode Off</span>
+          </button>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- AC Settings (shown when AC is on or user clicks AC button) -->
+    <div class="card" id="ac-settings-card" style="margin-bottom:var(--gap);display:none">
+      <div class="card-header">
+        <span class="card-title">AC Settings</span>
+        <button onclick="hideAcSettings()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem">&#x2715;</button>
+      </div>
+      <div class="grid grid-2" style="gap:20px">
+        <div class="slider-group">
+          <label>Temperature <span id="ac-temp-display">26&#xB0;C</span></label>
+          <input type="range" id="ac-temp" min="17" max="31" value="26"
+            oninput="updateAcTempDisplay()" onchange="setAcTemp()">
+          <div class="range-limits"><span>17&#xB0;C</span><span>31&#xB0;C</span></div>
+        </div>
+        <div class="slider-group">
+          <label>Timer <span id="ac-time-display">15 min</span></label>
+          <input type="range" id="ac-time" min="1" max="30" value="15"
+            oninput="updateAcTimeDisplay()" onchange="setAcTime()">
+          <div class="range-limits"><span>1 min</span><span>30 min</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status cards row -->
+    <div class="grid grid-3" style="margin-bottom:var(--gap)">
+
+      <!-- Doors & Windows -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Doors &amp; Windows</span>
+          <span class="badge" id="doors-badge" style="display:none"></span>
+        </div>
+        <div class="status-grid">
+          <div class="status-item"><div class="status-dot" id="dot-fl-door"></div><span>FL Door</span></div>
+          <div class="status-item"><div class="status-dot" id="dot-fr-door"></div><span>FR Door</span></div>
+          <div class="status-item"><div class="status-dot" id="dot-rl-door"></div><span>RL Door</span></div>
+          <div class="status-item"><div class="status-dot" id="dot-rr-door"></div><span>RR Door</span></div>
+          <div class="status-item"><div class="status-dot" id="dot-trunk"></div><span>Trunk</span></div>
+          <div class="status-item"><div class="status-dot" id="dot-fl-win"></div><span>FL Win</span></div>
+          <div class="status-item"><div class="status-dot" id="dot-fr-win"></div><span>FR Win</span></div>
+          <div class="status-item"><div class="status-dot" id="dot-rl-win"></div><span>RL Win</span></div>
+          <div class="status-item"><div class="status-dot" id="dot-rr-win"></div><span>RR Win</span></div>
+          <div class="status-item" style="grid-column:span 2">
+            <span id="lock-status-text" style="font-size:0.85rem;font-weight:700"></span>
+            <span>Lock</span>
+          </div>
+          <div class="status-item"><div class="status-dot" id="dot-sunroof"></div><span>Sunroof</span></div>
+        </div>
+      </div>
+
+      <!-- Lights & Climate -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Lights &amp; Climate</span>
+        </div>
+        <div class="status-grid">
+          <div class="status-item"><div class="status-dot" id="dot-headlight"></div><span>Headlight</span></div>
+          <div class="status-item"><div class="status-dot" id="dot-left-turn"></div><span>Left Turn</span></div>
+          <div class="status-item"><div class="status-dot" id="dot-right-turn"></div><span>Right Turn</span></div>
+          <div class="status-item"><div class="status-dot" id="dot-ac"></div><span>AC</span></div>
+          <div class="status-item"><div class="status-dot" id="dot-air-filter"></div><span>Air Filter</span></div>
+          <div class="status-item"><div class="status-dot" id="dot-petmode"></div><span>Pet Mode</span></div>
+          <div class="status-item"><div class="status-dot" id="dot-charge-port"></div><span>Charge Port</span></div>
+          <div class="status-item" style="grid-column:span 2">
+            <span id="charging-status-text" style="font-size:0.775rem;font-weight:600"></span>
+            <span>Charging</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tires -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Tires</span>
+          <span class="badge badge-off" id="tire-alarm-badge" style="display:none"></span>
+        </div>
+        <div class="tire-grid">
+          <div class="tire-item" id="tile-fl">
+            <div class="tire-label">Front Left</div>
+            <div class="tire-psi" id="fl-psi">–</div>
+            <div class="tire-temp" id="fl-temp">–</div>
+          </div>
+          <div class="tire-item" id="tile-fr">
+            <div class="tire-label">Front Right</div>
+            <div class="tire-psi" id="fr-psi">–</div>
+            <div class="tire-temp" id="fr-temp">–</div>
+          </div>
+          <div class="tire-item" id="tile-rl">
+            <div class="tire-label">Rear Left</div>
+            <div class="tire-psi" id="rl-psi">–</div>
+            <div class="tire-temp" id="rl-temp">–</div>
+          </div>
+          <div class="tire-item" id="tile-rr">
+            <div class="tire-label">Rear Right</div>
+            <div class="tire-psi" id="rr-psi">–</div>
+            <div class="tire-temp" id="rr-temp">–</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Location -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Location</span>
+        <a id="maps-link" href="#" target="_blank"
+          style="display:none;color:var(--accent);font-size:0.775rem;text-decoration:none;font-weight:600">
+          Open in Maps &#x2192;
+        </a>
+      </div>
+      <div style="font-size:0.875rem;color:var(--text-muted)" id="lat-lon">–</div>
+    </div>
+
+  </main>
+
+  <div class="toast-container" id="toasts"></div>
+  <script src="/app.js"></script>
+  <script>
+    let currentStatus = null;
+    let acVisible = false;
+
+    function showAcSettings() {
+      acVisible = true;
+      document.getElementById('ac-settings-card').style.display = 'block';
+    }
+
+    function hideAcSettings() {
+      acVisible = false;
+      document.getElementById('ac-settings-card').style.display = 'none';
+    }
+
+    function updateAcTempDisplay() {
+      document.getElementById('ac-temp-display').textContent =
+        document.getElementById('ac-temp').value + '\xB0C';
+    }
+
+    function updateAcTimeDisplay() {
+      document.getElementById('ac-time-display').textContent =
+        document.getElementById('ac-time').value + ' min';
+    }
+
+    async function setAcTemp() {
+      const temp = parseInt(document.getElementById('ac-temp').value);
+      const r = await apiPost('/api/command/ac_temp', { temp });
+      if (!r.success) showToast(r.message, 'error');
+    }
+
+    async function setAcTime() {
+      const time = parseInt(document.getElementById('ac-time').value);
+      const r = await apiPost('/api/command/ac_time', { time });
+      if (!r.success) showToast(r.message, 'error');
+    }
+
+    async function toggleLock() {
+      if (!currentStatus) return;
+      const action = currentStatus.status.unlockStatus ? 'lock' : 'unlock';
+      const btn = document.getElementById('btn-lock');
+      btn.disabled = true;
+      const r = await apiPost('/api/command/lock', { action });
+      showToast(r.message, r.success ? 'success' : 'error');
+      setTimeout(() => { btn.disabled = false; }, 4000);
+    }
+
+    async function toggleAc() {
+      if (!currentStatus) return;
+      const action = currentStatus.status.acStatus ? 'off' : 'on';
+      const btn = document.getElementById('btn-ac');
+      btn.disabled = true;
+      const temp = parseInt(document.getElementById('ac-temp').value);
+      const time = parseInt(document.getElementById('ac-time').value);
+      const r = await apiPost('/api/command/ac', { action, temp, time });
+      showToast(r.message, r.success ? 'success' : 'error');
+      if (r.success && action === 'on') showAcSettings();
+      setTimeout(() => { btn.disabled = false; }, 4000);
+    }
+
+    async function togglePetmode() {
+      if (!currentStatus) return;
+      const action = currentStatus.status.petmode ? 'off' : 'on';
+      const btn = document.getElementById('btn-petmode');
+      btn.disabled = true;
+      const r = await apiPost('/api/command/petmode', { action });
+      showToast(r.message, r.success ? 'success' : 'error');
+      setTimeout(() => { btn.disabled = false; }, 2000);
+    }
+
+    function setDoor(id, isOpen) {
+      const el = document.getElementById(id);
+      if (el) el.className = 'status-dot ' + (isOpen ? 'open' : 'closed');
+    }
+
+    function setActive(id, isOn) {
+      const el = document.getElementById(id);
+      if (el) el.className = 'status-dot ' + (isOn ? 'active' : '');
+    }
+
+    function setTile(pos, psi, temp, alarm) {
+      document.getElementById(pos + '-psi').textContent = psi.toFixed(1) + ' psi';
+      document.getElementById(pos + '-temp').textContent = temp + '\xB0C';
+      const tile = document.getElementById('tile-' + pos);
+      tile.className = 'tire-item' + (alarm ? ' alarm' : '');
+    }
+
+    function renderStatus(data) {
+      currentStatus = data;
+      const info = data.info;
+      const s = data.status;
+
+      // Vehicle header
+      document.getElementById('vehicle-name').textContent =
+        [info.brandName, info.vtype, info.config].filter(Boolean).join(' ');
+      document.getElementById('vehicle-vin').textContent = info.showedVin || '';
+      if (s.updatedAt) {
+        const d = new Date(s.updatedAt);
+        document.getElementById('last-updated').textContent =
+          'Updated ' + d.toLocaleTimeString();
+      }
+
+      // Battery
+      document.getElementById('soc-value').textContent = s.soc;
+      const bar = document.getElementById('soc-bar');
+      bar.style.width = s.soc + '%';
+      bar.className = 'progress-bar ' + (s.soc < 20 ? 'low' : s.soc < 50 ? 'med' : 'high');
+      document.getElementById('range-value').textContent = s.range;
+      document.getElementById('mileage-value').textContent = s.mileage.toLocaleString();
+
+      const chBadge = document.getElementById('charging-badge');
+      if (s.chargingStatus) {
+        chBadge.className = 'badge badge-on';
+        chBadge.textContent = '⚡ ' + s.chargingStatusDesc;
+        if (s.chargeTime > 0) {
+          const h = Math.floor(s.chargeTime / 60);
+          const m = s.chargeTime % 60;
+          document.getElementById('charge-time-label').textContent =
+            '~' + (h ? h + 'h ' : '') + m + 'm left';
+        }
+      } else {
+        chBadge.className = 'badge ' + (s.chargingPortPlugged ? 'badge-warn' : 'badge-off');
+        chBadge.textContent = s.chargingPortPlugged ? '🔌 Plugged' : 'Not charging';
+        document.getElementById('charge-time-label').textContent = '';
+      }
+
+      // Lock button
+      const unlocked = s.unlockStatus;
+      document.getElementById('lock-icon').textContent = unlocked ? '🔓' : '🔒';
+      document.getElementById('lock-label').textContent = unlocked ? 'Unlocked — tap to lock' : 'Locked — tap to unlock';
+      document.getElementById('btn-lock').className = 'cmd-btn ' + (unlocked ? 'active-red' : 'active-green');
+
+      // AC button
+      const acOn = s.acStatus;
+      document.getElementById('ac-icon').textContent = acOn ? '☃️' : '🌡️';
+      document.getElementById('ac-label').textContent = acOn ? 'AC On — tap to off' : 'AC Off — tap to on';
+      document.getElementById('btn-ac').className = 'cmd-btn ' + (acOn ? 'active-green' : '');
+      if (acOn && !acVisible) showAcSettings();
+
+      // Pet mode button
+      const petOn = s.petmode;
+      document.getElementById('petmode-label').textContent = petOn ? 'Pet Mode On — tap to off' : 'Pet Mode Off — tap to on';
+      document.getElementById('btn-petmode').className = 'cmd-btn ' + (petOn ? 'active-green' : '');
+
+      // AC sliders (don't override while user is dragging)
+      const tempEl = document.getElementById('ac-temp');
+      const timeEl = document.getElementById('ac-time');
+      if (document.activeElement !== tempEl) {
+        tempEl.value = s.acTemp;
+        document.getElementById('ac-temp-display').textContent = s.acTemp + '\xB0C';
+      }
+      if (document.activeElement !== timeEl) {
+        timeEl.value = s.acTime;
+        document.getElementById('ac-time-display').textContent = s.acTime + ' min';
+      }
+
+      // Doors & Windows
+      setDoor('dot-fl-door', s.flDoorOpen);
+      setDoor('dot-fr-door', s.frDoorOpen);
+      setDoor('dot-rl-door', s.rlDoorOpen);
+      setDoor('dot-rr-door', s.rrDoorOpen);
+      setDoor('dot-trunk',   s.trunkOpen);
+      setDoor('dot-fl-win',  s.flWindowOpen);
+      setDoor('dot-fr-win',  s.frWindowOpen);
+      setDoor('dot-rl-win',  s.rlWindowOpen);
+      setDoor('dot-rr-win',  s.rrWindowOpen);
+      setDoor('dot-sunroof', s.sunroofOpen);
+
+      const lockTxt = document.getElementById('lock-status-text');
+      lockTxt.textContent = unlocked ? '🔓 Unlocked' : '🔒 Locked';
+      lockTxt.style.color = unlocked ? 'var(--danger)' : 'var(--success)';
+
+      const anyOpen = s.flDoorOpen || s.frDoorOpen || s.rlDoorOpen || s.rrDoorOpen ||
+                      s.trunkOpen || s.flWindowOpen || s.frWindowOpen || s.rlWindowOpen ||
+                      s.rrWindowOpen || s.sunroofOpen;
+      const doorsBadge = document.getElementById('doors-badge');
+      if (anyOpen) {
+        doorsBadge.className = 'badge badge-danger';
+        doorsBadge.textContent = 'Open';
+        doorsBadge.style.display = '';
+      } else {
+        doorsBadge.style.display = 'none';
+      }
+
+      // Lights & Climate
+      setActive('dot-headlight',   s.headLight);
+      setActive('dot-left-turn',   s.leftTurnLight);
+      setActive('dot-right-turn',  s.rightTurnLight);
+      setActive('dot-ac',          s.acStatus);
+      setActive('dot-air-filter',  s.airFilterStatus);
+      setActive('dot-petmode',     s.petmode);
+      setActive('dot-charge-port', s.chargingPortPlugged);
+      document.getElementById('charging-status-text').textContent = s.chargingStatusDesc || '–';
+
+      // Tires
+      setTile('fl', s.flTirePressure, s.flTireTemp, s.flTirePressureAlarm || s.flTireTempAlarm);
+      setTile('fr', s.frTirePressure, s.frTireTemp, s.frTirePressureAlarm || s.frTireTempAlarm);
+      setTile('rl', s.rlTirePressure, s.rlTireTemp, s.rlTirePressureAlarm || s.rlTireTempAlarm);
+      setTile('rr', s.rrTirePressure, s.rrTireTemp, s.rrTirePressureAlarm || s.rrTireTempAlarm);
+
+      const anyAlarm = s.flTirePressureAlarm || s.frTirePressureAlarm ||
+                       s.rlTirePressureAlarm || s.rrTirePressureAlarm ||
+                       s.flTireTempAlarm     || s.frTireTempAlarm     ||
+                       s.rlTireTempAlarm     || s.rrTireTempAlarm;
+      const tireAlarmBadge = document.getElementById('tire-alarm-badge');
+      if (anyAlarm) {
+        tireAlarmBadge.className = 'badge badge-warn';
+        tireAlarmBadge.textContent = '⚠ Alarm';
+        tireAlarmBadge.style.display = '';
+      } else {
+        tireAlarmBadge.style.display = 'none';
+      }
+
+      // Location
+      if (s.latitude && s.longitude && (s.latitude !== 0 || s.longitude !== 0)) {
+        document.getElementById('lat-lon').textContent =
+          s.latitude.toFixed(6) + ', ' + s.longitude.toFixed(6);
+        const link = document.getElementById('maps-link');
+        link.href = 'https://www.google.com/maps?q=' + s.latitude + ',' + s.longitude;
+        link.style.display = '';
+      }
+    }
+
+    async function refresh() {
+      try {
+        const data = await fetch('/api/status').then(r => r.json());
+        renderStatus(data);
+      } catch (e) {
+        console.warn('Status fetch failed:', e);
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 5000);
+  </script>
+</body>
+</html>

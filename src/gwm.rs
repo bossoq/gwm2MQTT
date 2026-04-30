@@ -8,7 +8,7 @@ use reqwest::{header::HeaderMap, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
-use std::{collections::HashMap, sync::LazyLock};
+use std::{collections::HashMap, fs, sync::LazyLock};
 use tokio::sync::Mutex;
 use url::Url;
 use urlencoding::encode;
@@ -17,7 +17,7 @@ use uuid::Uuid;
 static EMAIL: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("EMAIL"));
 static PASSWORD: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("PASSWORD"));
 static PIN: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("PIN"));
-// const CRED_FILE: &str = "/opt/gwm2mqtt/credentials.json";
+pub(crate) const CRED_FILE: &str = "/opt/gwm2mqtt/credentials.json";
 const BASEURL: &str = "https://ap-h5-gateway.gwmcloud.com/app-api/api/";
 const LOGIN: &str = "v1.0/userAuth/loginAccount";
 const REFRESHTOKEN: &str = "v1.0/userAuth/refreshToken";
@@ -412,14 +412,34 @@ fn sign_calc_post(payload: &Value, url: &Url, headers: HeaderMap) -> HeaderMap {
     calc_header("POST", url_path, &payload_str, headers)
 }
 
+fn read_cred_file() -> Result<Value, String> {
+    let content = fs::read_to_string(CRED_FILE)
+        .map_err(|_| "No credentials found. Set EMAIL/PASSWORD at build time or save via the dashboard.".to_string())?;
+    serde_json::from_str::<Value>(&content)
+        .map_err(|e| format!("Failed to parse credentials file: {e}"))
+}
+
 pub async fn login() -> Result<bool, String> {
     info!("Logging in using email");
-    let email = EMAIL.unwrap_or_else(|| {
-        panic!("Missing EMAIL var");
-    });
-    let password = PASSWORD.unwrap_or_else(|| {
-        panic!("Missing PASSWORD var");
-    });
+    // Prefer compile-time env vars; fall back to /opt/gwm2mqtt/credentials.json
+    let (email_owned, password_owned): (String, String) =
+        match (*EMAIL, *PASSWORD) {
+            (Some(e), Some(p)) if !e.is_empty() && !p.is_empty() => {
+                (e.to_string(), p.to_string())
+            }
+            _ => {
+                let creds = read_cred_file()?;
+                let e = creds["email"].as_str().filter(|s| !s.is_empty())
+                    .map(String::from)
+                    .ok_or_else(|| "email not set in credentials file".to_string())?;
+                let p = creds["password"].as_str().filter(|s| !s.is_empty())
+                    .map(String::from)
+                    .ok_or_else(|| "password not set in credentials file".to_string())?;
+                (e, p)
+            }
+        };
+    let email = email_owned.as_str();
+    let password = password_owned.as_str();
     let url = Url::parse(BASEURL)
         .unwrap_or_else(|e| {
             panic!("Failed to parse base URL: {}", e);
@@ -491,10 +511,18 @@ pub async fn login() -> Result<bool, String> {
         }
     };
     let mut creds = CREDENTIALS.lock().await;
-    let md5pin = if !PIN.unwrap_or("").is_empty() {
-        format!("{:X}", compute(PIN.unwrap_or(""))).to_ascii_lowercase()
+    let pin_str = if !PIN.unwrap_or("").is_empty() {
+        PIN.unwrap_or("").to_string()
     } else {
-        "".to_string()
+        read_cred_file()
+            .ok()
+            .and_then(|v| v["pin"].as_str().filter(|s| !s.is_empty()).map(String::from))
+            .unwrap_or_default()
+    };
+    let md5pin = if !pin_str.is_empty() {
+        format!("{:X}", compute(pin_str.as_str())).to_ascii_lowercase()
+    } else {
+        String::new()
     };
     *creds = Credentials::new(access_token, refresh_token, &md5pin);
     Ok(true)
