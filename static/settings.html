@@ -115,7 +115,7 @@
         document.getElementById('pin-hint').textContent = c.hasPin      ? '(PIN saved)'      : '(not set)';
         document.getElementById('vehicle-vin').value       = c.vehicleVin       || '';
         document.getElementById('refresh-interval').value  = c.refreshInterval  || 10;
-        document.getElementById('base-url').value           = c.baseUrl;
+        document.getElementById('base-url').value           = c.baseUrl || '';
 
         const m = data.mqtt || {};
         document.getElementById('mqtt-broker').value    = m.broker        || '';
