@@ -167,6 +167,26 @@ main {
   border-color: rgba(239,68,68,.4);
 }
 
+.icon-btn {
+  padding: 0;
+  width: 46px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  background: var(--surface2);
+  color: var(--text);
+}
+
+.icon-btn:hover { border-color: var(--accent); }
+.icon-btn:active { transform: scale(0.95); }
+.icon-btn.active { background: rgba(59,130,246,.15); border-color: rgba(59,130,246,.5); }
+
 .status-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

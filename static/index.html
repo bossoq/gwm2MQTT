@@ -70,10 +70,13 @@
             <span id="lock-label">Lock</span>
           </button>
 
-          <button class="cmd-btn" id="btn-ac" onclick="toggleAc()">
-            <span id="ac-icon">&#x2603;&#xFE0F;</span>
-            <span id="ac-label">AC Off</span>
-          </button>
+          <div style="display:flex;gap:8px">
+            <button class="cmd-btn" id="btn-ac" onclick="toggleAc()" style="flex:1">
+              <span id="ac-icon">&#x2603;&#xFE0F;</span>
+              <span id="ac-label">AC Off</span>
+            </button>
+            <button class="icon-btn" id="btn-ac-settings" onclick="toggleAcSettings()" title="AC Settings">&#x2699;&#xFE0F;</button>
+          </div>
 
           <button class="cmd-btn" id="btn-petmode" onclick="togglePetmode()">
             <span>&#x1F43E;</span>
@@ -243,11 +246,17 @@
     function showAcSettings() {
       acVisible = true;
       document.getElementById('ac-settings-card').style.display = 'block';
+      document.getElementById('btn-ac-settings').classList.add('active');
     }
 
     function hideAcSettings() {
       acVisible = false;
       document.getElementById('ac-settings-card').style.display = 'none';
+      document.getElementById('btn-ac-settings').classList.remove('active');
+    }
+
+    function toggleAcSettings() {
+      if (acVisible) hideAcSettings(); else showAcSettings();
     }
 
     function updateAcTempDisplay() {

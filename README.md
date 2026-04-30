@@ -37,9 +37,11 @@ Or set `WEB_PORT` at build time for a different compile-time default.
 | Page | URL | Description |
 |---|---|---|
 | Status | `/` | Live vehicle status and command buttons (lock, AC, pet mode) |
-| Settings | `/settings` | GWM account credentials, MQTT broker config, and service restart |
+| Settings | `/settings` | GWM account credentials, MQTT broker config, API base URL, and service restart |
 
-Settings are saved to `/opt/gwm2mqtt/credentials.json` (AES-256-GCM encrypted) and `/opt/gwm2mqtt/mqtt.json`. GWM credential changes are picked up automatically on the next login retry (within 30 s). MQTT broker changes require a service restart — use the **Restart Service** button at the bottom of the Settings page; the dashboard polls and reconnects automatically.
+The status page includes an AC settings panel (temperature and timer sliders) that can be toggled via the ⚙️ button next to the AC command button.
+
+GWM credentials are saved to `/opt/gwm2mqtt/credentials.json` (AES-256-GCM encrypted). The API base URL is saved to `/opt/gwm2mqtt/baseurl.json` (plain JSON — not sensitive). MQTT broker settings are saved to `/opt/gwm2mqtt/mqtt.json`. GWM credential changes are picked up automatically on the next login retry (within 30 s). MQTT broker changes require a service restart — use the **Restart Service** button at the bottom of the Settings page; the dashboard polls and reconnects automatically.
 
 ## Configuration
 
@@ -70,6 +72,8 @@ Configuration can be set at **compile time** via environment variables or at **r
 | `REFRESH_INTERVAL` | `10` | Polling interval in seconds |
 | `WEB_PORT` | `8080` | Web dashboard port |
 
+> **Note:** `EMAIL`, `PASSWORD`, `PIN`, `VEHICLE_VIN`, and `REFRESH_INTERVAL` can also be set at runtime via the **Settings** page and are stored in `credentials.json`. The GWM API base URL is stored separately in `baseurl.json` (plain JSON, not encrypted) and is **required** — the settings page validates scheme and host before saving. Runtime values always take priority over compile-time env vars.
+
 ## Building
 
 ```bash
@@ -96,10 +100,11 @@ The service reads and writes files under `/opt/gwm2mqtt/`:
 
 | Path | Description |
 |---|---|
-| `/opt/gwm2mqtt/credentials.json` | GWM account credentials — AES-256-GCM encrypted, keyed to `/etc/machine-id` |
+| `/opt/gwm2mqtt/credentials.json` | GWM account credentials and runtime settings (`vehicleVin`, `refreshInterval`) — AES-256-GCM encrypted, keyed to `/etc/machine-id` |
+| `/opt/gwm2mqtt/baseurl.json` | GWM API base URL — plain JSON `{"baseUrl":"https://..."}`, not encrypted |
 | `/opt/gwm2mqtt/mqtt.json` | MQTT broker config (written by dashboard) |
 | `/opt/gwm2mqtt/configuration.json` | Cached vehicle info (array, one entry per vehicle) |
-| `/opt/gwm2mqtt/state_{VIN}.json` | Persisted vehicle state per vehicle (ac_time, ac_temp, petmode); legacy `state.json` is read on first run for migration |
+| `/opt/gwm2mqtt/state_{VIN}.json` | Persisted vehicle state per vehicle (`ac_time`, `ac_temp`, `petmode`); legacy `state.json` is read on first run for migration |
 | `/opt/gwm2mqtt/logs/app.log` | Rolling log file (debug level, 10 MB × 10 files) |
 
 ## Home Assistant Entities
@@ -118,6 +123,6 @@ Once running, the following entities are auto-discovered per vehicle (`{prefix}/
 
 ## Notes
 
-- The API endpoint is hardcoded to the Asia-Pacific GWM Cloud (`ap-h5-gateway.gwmcloud.com`) with Thailand region headers. Other regions are not currently supported.
+- The GWM API base URL is a **required** setting (default: `unset`) and must be configured via **Settings → GWM API Base URL** before the service can reach the GWM cloud. It is stored in plain JSON at `/opt/gwm2mqtt/baseurl.json` (separate from the encrypted credentials file) and cached in memory at runtime. The field auto-corrects missing `https://` prefix and trailing `/`; the server validates scheme and host. Region-specific headers (`country: TH`, `language: th`, etc.) are compiled in to `STD_HEADER` in `gwm.rs` and must be changed there for other regions.
 - Remote commands (lock, climate) poll for confirmation up to 10 times with 5-second intervals.
 - To create a release: add the `release` label to a PR before merging it to `main`. The CI workflow will build the binary and `.deb` and publish a GitHub Release automatically.
