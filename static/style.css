@@ -295,6 +295,9 @@ input[type="range"] {
 
 .btn-primary { background: var(--accent); color: white; }
 .btn-primary:hover { background: var(--accent-hover); }
+.btn-danger { background: var(--danger); color: white; }
+.btn-danger:hover:not(:disabled) { background: #dc2626; }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .feedback-msg { margin-top: 10px; font-size: 0.825rem; }
 

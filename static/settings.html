@@ -84,6 +84,17 @@
         <div id="mqtt-feedback" class="feedback-msg"></div>
       </div>
 
+      <!-- Service -->
+      <div class="form-section">
+        <div class="form-section-title">Service</div>
+        <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 1rem">
+          Restart the gwm2mqtt service to apply saved configuration changes.
+          The dashboard will reconnect automatically.
+        </p>
+        <button class="btn btn-danger" id="restart-btn" onclick="confirmRestart()">Restart Service</button>
+        <div id="restart-feedback" class="feedback-msg"></div>
+      </div>
+
     </div>
   </main>
 
@@ -145,6 +156,39 @@
       if (result.success) {
         document.getElementById('mqtt-password').value = '';
       }
+    }
+
+    async function confirmRestart() {
+      if (!confirm('Restart the gwm2mqtt service?\n\nThe dashboard will be unavailable for a few seconds.')) return;
+      const btn = document.getElementById('restart-btn');
+      const fb  = document.getElementById('restart-feedback');
+      btn.disabled = true;
+      btn.textContent = 'Restarting…';
+      fb.style.color = 'var(--text-muted)';
+      fb.textContent = 'Sending restart request…';
+      try {
+        await fetch('/api/restart', { method: 'POST' });
+      } catch (_) { /* expected — connection drops on restart */ }
+      fb.textContent = 'Service restarting — reconnecting…';
+      pollUntilBack();
+    }
+
+    function pollUntilBack() {
+      const fb  = document.getElementById('restart-feedback');
+      const btn = document.getElementById('restart-btn');
+      const interval = setInterval(async () => {
+        try {
+          const r = await fetch('/api/status');
+          if (r.ok) {
+            clearInterval(interval);
+            fb.style.color   = 'var(--success)';
+            fb.textContent   = 'Service restarted successfully.';
+            btn.disabled     = false;
+            btn.textContent  = 'Restart Service';
+            showToast('Service restarted', 'success');
+          }
+        } catch (_) { /* still down */ }
+      }, 2000);
     }
 
     loadSettings();

@@ -1,4 +1,5 @@
 #![recursion_limit = "256"]
+pub(crate) mod crypto;
 pub mod gwm;
 mod mqtt;
 pub(crate) mod web;

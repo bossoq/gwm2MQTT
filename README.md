@@ -10,6 +10,8 @@ A Rust service that bridges GWM Cloud vehicle telemetry to MQTT with Home Assist
 - Pet mode: keeps AC cycling automatically
 - Persists AC timer, temperature, and pet mode state locally across restarts
 - Web dashboard for live status, remote commands, and runtime configuration (default port 8080)
+- Service restart button in the dashboard — reconnects automatically after restart
+- Credentials stored AES-256-GCM encrypted at rest, keyed to the host machine
 - Debian package via `cargo-deb` with systemd service and auto-restart
 
 ## Installation (Debian/Ubuntu)
@@ -35,9 +37,9 @@ Or set `WEB_PORT` at build time for a different compile-time default.
 | Page | URL | Description |
 |---|---|---|
 | Status | `/` | Live vehicle status and command buttons (lock, AC, pet mode) |
-| Settings | `/settings` | GWM account credentials and MQTT broker config |
+| Settings | `/settings` | GWM account credentials, MQTT broker config, and service restart |
 
-Settings are saved to `/opt/gwm2mqtt/credentials.json` and `/opt/gwm2mqtt/mqtt.json`. GWM credential changes are picked up automatically on the next login retry (within 30 s). MQTT broker changes require a service restart.
+Settings are saved to `/opt/gwm2mqtt/credentials.json` (AES-256-GCM encrypted) and `/opt/gwm2mqtt/mqtt.json`. GWM credential changes are picked up automatically on the next login retry (within 30 s). MQTT broker changes require a service restart — use the **Restart Service** button at the bottom of the Settings page; the dashboard polls and reconnects automatically.
 
 ## Configuration
 
@@ -94,7 +96,7 @@ The service reads and writes files under `/opt/gwm2mqtt/`:
 
 | Path | Description |
 |---|---|
-| `/opt/gwm2mqtt/credentials.json` | GWM account credentials (written by dashboard) |
+| `/opt/gwm2mqtt/credentials.json` | GWM account credentials — AES-256-GCM encrypted, keyed to `/etc/machine-id` |
 | `/opt/gwm2mqtt/mqtt.json` | MQTT broker config (written by dashboard) |
 | `/opt/gwm2mqtt/configuration.json` | Cached vehicle info |
 | `/opt/gwm2mqtt/state.json` | Persisted vehicle state (ac_time, ac_temp, petmode) |
