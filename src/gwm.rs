@@ -17,7 +17,15 @@ use uuid::Uuid;
 static EMAIL: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("EMAIL"));
 static PASSWORD: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("PASSWORD"));
 static PIN: LazyLock<Option<&str>> = LazyLock::new(|| option_env!("PIN"));
-const BASEURL: &str = "https://ap-h5-gateway.gwmcloud.com/";
+const DEFAULT_BASEURL: &str = "http://localhost:8080/";
+
+fn get_base_url() -> String {
+    crate::crypto::read_cred_json()
+        .ok()
+        .and_then(|v| v["baseUrl"].as_str().map(String::from))
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| DEFAULT_BASEURL.to_string())
+}
 const LOGIN: &str = "app-api/api/v1.0/userAuth/loginAccount";
 const REFRESHTOKEN: &str = "app-api/api/v1.0/userAuth/refreshToken";
 const ACQUIREVEHICLES: &str = "app-api/api/v1.0/vehicle/acquireVehicles";
@@ -27,19 +35,6 @@ const SENDREMOTECMD: &str = "app-api/api/v1.0/vehicle/T5/sendCmd";
 
 static STD_HEADER: LazyLock<HeaderMap> = LazyLock::new(|| {
     let mut header = HeaderMap::new();
-    header.insert(
-        "Host",
-        Url::parse(BASEURL)
-            .unwrap_or_else(|e| {
-                panic!("Failed to parse base URL: {}", e);
-            })
-            .host_str()
-            .unwrap_or_default()
-            .parse()
-            .unwrap_or_else(|e| {
-                panic!("Failed to parse header: {}", e);
-            }),
-    );
     header.insert(
         "rs",
         "2".parse().unwrap_or_else(|e| {
@@ -456,7 +451,7 @@ pub async fn login() -> Result<bool, String> {
     };
     let email = email_owned.as_str();
     let password = password_owned.as_str();
-    let url = Url::parse(BASEURL)
+    let url = Url::parse(&get_base_url())
         .unwrap_or_else(|e| {
             panic!("Failed to parse base URL: {}", e);
         })
@@ -642,7 +637,7 @@ pub async fn get_accesstoken() -> Result<String, String> {
         return Ok(access_token);
     }
     info!("Token is expired, refreshing");
-    let url = Url::parse(BASEURL)
+    let url = Url::parse(&get_base_url())
         .unwrap_or_else(|e| {
             panic!("Failed to parse base URL: {}", e);
         })
@@ -709,7 +704,7 @@ pub async fn get_vehicles() -> Result<Vec<VehicleInfo>, String> {
         Ok(token) => token,
         Err(e) => return Err(e),
     };
-    let url = Url::parse(BASEURL)
+    let url = Url::parse(&get_base_url())
         .unwrap_or_else(|e| {
             panic!("Failed to parse base URL: {}", e);
         })
@@ -776,7 +771,7 @@ pub async fn get_vehicle_status(vin: &str, model_id: i64) -> Result<VehicleStatu
         Ok(token) => token,
         Err(e) => return Err(e),
     };
-    let url = Url::parse(BASEURL)
+    let url = Url::parse(&get_base_url())
         .unwrap_or_else(|e| {
             panic!("Failed to parse base URL: {}", e);
         })
@@ -839,7 +834,7 @@ pub async fn send_climate_command(
     if md5_pin.is_empty() {
         return Err("No PIN set".to_string());
     }
-    let url = Url::parse(BASEURL)
+    let url = Url::parse(&get_base_url())
         .unwrap_or_else(|e| {
             panic!("Failed to parse base URL: {}", e);
         })
@@ -937,7 +932,7 @@ pub async fn send_lock_command(vin: &str, switch_order: &str) -> Result<bool, St
     if md5_pin.is_empty() {
         return Err("No PIN set".to_string());
     }
-    let url = Url::parse(BASEURL)
+    let url = Url::parse(&get_base_url())
         .unwrap_or_else(|e| {
             panic!("Failed to parse base URL: {}", e);
         })
@@ -1027,7 +1022,7 @@ async fn get_remote_cmd_status(vin: &str, seq_no: &str, remote_type: &str) -> Re
         Ok(token) => token,
         Err(e) => return Err(e),
     };
-    let url = Url::parse(BASEURL)
+    let url = Url::parse(&get_base_url())
         .unwrap_or_else(|e| {
             panic!("Failed to parse base URL: {}", e);
         })

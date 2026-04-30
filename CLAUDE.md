@@ -36,9 +36,15 @@ cargo build --release
 
 Alternatively, config files under `/opt/gwm2mqtt/` are read at runtime as fallback:
 - `/opt/gwm2mqtt/mqtt.json` — MQTT broker settings
+- `/opt/gwm2mqtt/credentials.json` — encrypted GWM credentials and runtime settings (AES-256-GCM)
 - `/opt/gwm2mqtt/configuration.json` — cached vehicle info (`VehicleInfo`)
-- `/opt/gwm2mqtt/state.json` — persisted vehicle state (`VehicleStatus`)
+- `/opt/gwm2mqtt/state_{VIN}.json` — persisted vehicle state (`VehicleStatus`), one file per vehicle
 - `/opt/gwm2mqtt/logs/` — rolling log files
+
+Runtime-configurable settings (saved via web dashboard, stored in `credentials.json`):
+- `baseUrl` — GWM API base URL (default: `http://localhost:8080/`); auto-normalised (adds `https://` prefix and trailing `/` if missing)
+- `vehicleVin` — VIN filter (optional)
+- `refreshInterval` — polling interval in seconds
 
 Environment variables (all compile-time via `option_env!`):
 - `EMAIL`, `PASSWORD`, `PIN` — GWM Cloud credentials (PIN is MD5-hashed for remote commands)
@@ -68,8 +74,17 @@ This is a Rust async bridge that polls a GWM Cloud API and publishes vehicle tel
 - `src/gwm.rs` — GWM Cloud API client: auth (login, token refresh), vehicle list, vehicle status polling, remote commands (lock `0x05`, climate `0x04`). Request signing uses HMAC-SHA256 over sorted query params / JSON body.
 - `src/mqtt.rs` — MQTT client setup, Home Assistant discovery payload construction, state publishing. Topic scheme: `{prefix}/{brand}_{last4vin}/{entity}`.
 - `src/lib.rs` — Orchestration: global state (`LazyLock<Mutex<_>>`), main event loop, command dispatch, debounce logic.
+- `src/web.rs` — Axum web dashboard (`/` and `/settings`); REST API for status, config read/write, and direct vehicle commands.
+- `src/crypto.rs` — AES-256-GCM encryption for `credentials.json`; machine-id derived key with `/opt/gwm2mqtt/.secret` fallback.
 - `src/logging.rs` — log4rs setup: debug-level file logging with rolling (10 MB / 10 files), info-level stderr.
+
+### Web dashboard
+
+Served on the port passed to `main` (default `3000`). Static files are embedded at compile time via `include_str!`:
+- `static/index.html` — live vehicle dashboard; polls `/api/status` every 5 s; AC settings panel toggle via ⚙️ button next to the AC command button.
+- `static/settings.html` — configuration page for GWM credentials, MQTT broker, and API base URL.
+- `static/style.css`, `static/app.js` — shared styles and utilities.
 
 ### API target
 
-The GWM Cloud base URL is hardcoded to the Asia-Pacific endpoint (`ap-h5-gateway.gwmcloud.com`) with Thailand region headers (`country: TH`, `language: th`). Changing region requires updating `STD_HEADER` constants in `gwm.rs`.
+The GWM API base URL is runtime-configurable via the settings page (stored as `baseUrl` in `credentials.json`). `get_base_url()` in `gwm.rs` reads it at call time, falling back to `DEFAULT_BASEURL` (`http://localhost:8080/`). Region-specific headers (`country: TH`, `language: th`, etc.) are in the `STD_HEADER` static in `gwm.rs` and must be updated there for other regions.

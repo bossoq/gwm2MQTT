@@ -129,6 +129,7 @@ async fn api_config() -> impl IntoResponse {
     let refresh_interval = creds["refreshInterval"].as_i64().unwrap_or(10);
     let has_password = creds["password"].as_str().is_some_and(|s| !s.is_empty());
     let has_pin = creds["pin"].as_str().is_some_and(|s| !s.is_empty());
+    let base_url = creds["baseUrl"].as_str().unwrap_or("").to_string();
 
     Json(json!({
         "mqtt": mqtt_val,
@@ -138,6 +139,7 @@ async fn api_config() -> impl IntoResponse {
             "hasPin": has_pin,
             "vehicleVin": vehicle_vin,
             "refreshInterval": refresh_interval,
+            "baseUrl": base_url,
         }
     }))
 }
@@ -196,6 +198,7 @@ struct CredentialsRequest {
     pin: String,
     vehicle_vin: String,
     refresh_interval: i64,
+    base_url: String,
 }
 
 async fn api_config_credentials(Json(req): Json<CredentialsRequest>) -> impl IntoResponse {
@@ -223,6 +226,7 @@ async fn api_config_credentials(Json(req): Json<CredentialsRequest>) -> impl Int
         "pin": pin,
         "vehicleVin": req.vehicle_vin,
         "refreshInterval": req.refresh_interval,
+        "baseUrl": req.base_url,
     });
 
     match crypto::write_cred_json(&config) {

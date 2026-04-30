@@ -37,7 +37,9 @@ Or set `WEB_PORT` at build time for a different compile-time default.
 | Page | URL | Description |
 |---|---|---|
 | Status | `/` | Live vehicle status and command buttons (lock, AC, pet mode) |
-| Settings | `/settings` | GWM account credentials, MQTT broker config, and service restart |
+| Settings | `/settings` | GWM account credentials, MQTT broker config, API base URL, and service restart |
+
+The status page includes an AC settings panel (temperature and timer sliders) that can be toggled via the ⚙️ button next to the AC command button.
 
 Settings are saved to `/opt/gwm2mqtt/credentials.json` (AES-256-GCM encrypted) and `/opt/gwm2mqtt/mqtt.json`. GWM credential changes are picked up automatically on the next login retry (within 30 s). MQTT broker changes require a service restart — use the **Restart Service** button at the bottom of the Settings page; the dashboard polls and reconnects automatically.
 
@@ -70,6 +72,8 @@ Configuration can be set at **compile time** via environment variables or at **r
 | `REFRESH_INTERVAL` | `10` | Polling interval in seconds |
 | `WEB_PORT` | `8080` | Web dashboard port |
 
+> **Note:** `EMAIL`, `PASSWORD`, `PIN`, `VEHICLE_VIN`, `REFRESH_INTERVAL`, and the GWM API base URL can also be set at runtime via the **Settings** page and are stored in `credentials.json`. Runtime values always take priority over compile-time env vars.
+
 ## Building
 
 ```bash
@@ -96,10 +100,10 @@ The service reads and writes files under `/opt/gwm2mqtt/`:
 
 | Path | Description |
 |---|---|
-| `/opt/gwm2mqtt/credentials.json` | GWM account credentials — AES-256-GCM encrypted, keyed to `/etc/machine-id` |
+| `/opt/gwm2mqtt/credentials.json` | GWM account credentials and runtime settings (`baseUrl`, `vehicleVin`, `refreshInterval`) — AES-256-GCM encrypted, keyed to `/etc/machine-id` |
 | `/opt/gwm2mqtt/mqtt.json` | MQTT broker config (written by dashboard) |
 | `/opt/gwm2mqtt/configuration.json` | Cached vehicle info (array, one entry per vehicle) |
-| `/opt/gwm2mqtt/state_{VIN}.json` | Persisted vehicle state per vehicle (ac_time, ac_temp, petmode); legacy `state.json` is read on first run for migration |
+| `/opt/gwm2mqtt/state_{VIN}.json` | Persisted vehicle state per vehicle (`ac_time`, `ac_temp`, `petmode`); legacy `state.json` is read on first run for migration |
 | `/opt/gwm2mqtt/logs/app.log` | Rolling log file (debug level, 10 MB × 10 files) |
 
 ## Home Assistant Entities
@@ -118,6 +122,6 @@ Once running, the following entities are auto-discovered per vehicle (`{prefix}/
 
 ## Notes
 
-- The API endpoint is hardcoded to the Asia-Pacific GWM Cloud (`ap-h5-gateway.gwmcloud.com`) with Thailand region headers. Other regions are not currently supported.
+- The GWM API base URL defaults to `http://localhost:8080/` and can be changed at runtime via **Settings → GWM API Base URL**. The field auto-corrects missing `https://` prefix and trailing `/`. Region-specific headers (`country: TH`, `language: th`, etc.) are compiled in to `STD_HEADER` in `gwm.rs` and must be changed there for other regions.
 - Remote commands (lock, climate) poll for confirmation up to 10 times with 5-second intervals.
 - To create a release: add the `release` label to a PR before merging it to `main`. The CI workflow will build the binary and `.deb` and publish a GitHub Release automatically.

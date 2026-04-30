@@ -46,6 +46,10 @@
           <label>Refresh interval (seconds)</label>
           <input type="number" id="refresh-interval" min="5" max="300" value="10">
         </div>
+        <div class="form-group">
+          <label>GWM API Base URL <span style="font-size:0.7rem;color:var(--border)">(optional – leave blank for default AP region)</span></label>
+          <input type="text" id="base-url" placeholder="http://localhost:8080/" autocomplete="off" spellcheck="false">
+        </div>
 
         <button class="btn btn-primary" onclick="saveCredentials()">Save Account Settings</button>
         <div id="creds-feedback" class="feedback-msg"></div>
@@ -111,6 +115,7 @@
         document.getElementById('pin-hint').textContent = c.hasPin      ? '(PIN saved)'      : '(not set)';
         document.getElementById('vehicle-vin').value       = c.vehicleVin       || '';
         document.getElementById('refresh-interval').value  = c.refreshInterval  || 10;
+        document.getElementById('base-url').value           = c.baseUrl           || '';
 
         const m = data.mqtt || {};
         document.getElementById('mqtt-broker').value    = m.broker        || '';
@@ -123,13 +128,25 @@
       }
     }
 
+    function normalizeBaseUrl(raw) {
+      let s = raw.trim();
+      if (!s) return '';
+      if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
+      if (!s.endsWith('/')) s += '/';
+      return s;
+    }
+
     async function saveCredentials() {
+      const rawUrl = document.getElementById('base-url').value;
+      const baseUrl = normalizeBaseUrl(rawUrl);
+      document.getElementById('base-url').value = baseUrl;
       const result = await apiPost('/api/config/credentials', {
         email:           document.getElementById('email').value,
         password:        document.getElementById('password').value,
         pin:             document.getElementById('pin').value,
         vehicleVin:      document.getElementById('vehicle-vin').value,
         refreshInterval: parseInt(document.getElementById('refresh-interval').value) || 10,
+        baseUrl,
       });
       const el = document.getElementById('creds-feedback');
       el.textContent   = result.message;
