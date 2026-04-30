@@ -13,7 +13,7 @@ use tokio::time::{self, Duration};
 use crate::crypto;
 use crate::gwm::{send_climate_command, send_lock_command};
 use crate::mqtt::MQTT_CONFIG_FILE;
-use crate::{DEBOUNCE_AC, DEBOUNCE_LOCK, MQTT_PUBLISH, STATE_FILE, VEHICLE_INFO, VEHICLE_STATUS};
+use crate::{state_file_path, VehicleState, VEHICLES};
 
 static INDEX_HTML: &str = include_str!("../static/index.html");
 static SETTINGS_HTML: &str = include_str!("../static/settings.html");
@@ -73,28 +73,39 @@ async fn script() -> impl IntoResponse {
     )
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+fn vehicle_state_json(vs: &VehicleState) -> Value {
+    json!({
+        "vin": vs.info.showed_vin,
+        "info": serde_json::to_value(&vs.info).unwrap_or(Value::Null),
+        "status": serde_json::to_value(&vs.status).unwrap_or(Value::Null),
+        "debounce": { "lock": vs.debounce_lock, "ac": vs.debounce_ac }
+    })
+}
+
+/// Find vehicle by showed_vin (or the first vehicle if vin is None/empty).
+fn find_vehicle_mut<'a>(
+    vehicles: &'a mut [VehicleState],
+    vin: Option<&str>,
+) -> Option<&'a mut VehicleState> {
+    match vin {
+        Some(v) if !v.is_empty() => vehicles.iter_mut().find(|vs| vs.info.showed_vin == v),
+        _ => vehicles.first_mut(),
+    }
+}
+
 // ── API: status ───────────────────────────────────────────────────────────────
 
 async fn api_status() -> impl IntoResponse {
-    let vehicle_info = VEHICLE_INFO.lock().await.clone();
-    let vehicle_status = VEHICLE_STATUS.lock().await.clone();
-    let debounce_lock = DEBOUNCE_LOCK.lock().await.clone();
-    let debounce_ac = DEBOUNCE_AC.lock().await.clone();
-
-    let info_json = serde_json::to_value(&vehicle_info).unwrap_or(Value::Null);
-    let status_json = serde_json::to_value(&vehicle_status).unwrap_or(Value::Null);
-
-    Json(json!({
-        "info": info_json,
-        "status": status_json,
-        "debounce": { "lock": debounce_lock, "ac": debounce_ac }
-    }))
+    let vehicles = VEHICLES.lock().await;
+    let result: Vec<Value> = vehicles.iter().map(vehicle_state_json).collect();
+    Json(json!({ "vehicles": result }))
 }
 
 // ── API: config read/write ────────────────────────────────────────────────────
 
 async fn api_config() -> impl IntoResponse {
-    // MQTT config from file (password masked)
     let mut mqtt_val = fs::read_to_string(MQTT_CONFIG_FILE)
         .ok()
         .and_then(|c| serde_json::from_str::<Value>(&c).ok())
@@ -112,9 +123,7 @@ async fn api_config() -> impl IntoResponse {
         obj.insert("password".to_string(), Value::String(String::new()));
     }
 
-    // Credentials from file (password/pin masked, presence indicated)
     let creds = crypto::read_cred_json().unwrap_or(json!({}));
-
     let email = creds["email"].as_str().unwrap_or("").to_string();
     let vehicle_vin = creds["vehicleVin"].as_str().unwrap_or("").to_string();
     let refresh_interval = creds["refreshInterval"].as_i64().unwrap_or(10);
@@ -145,7 +154,6 @@ struct MqttConfigRequest {
 }
 
 async fn api_config_mqtt(Json(req): Json<MqttConfigRequest>) -> impl IntoResponse {
-    // Preserve existing password when left blank
     let password = if req.password.is_empty() {
         fs::read_to_string(MQTT_CONFIG_FILE)
             .ok()
@@ -191,7 +199,6 @@ struct CredentialsRequest {
 }
 
 async fn api_config_credentials(Json(req): Json<CredentialsRequest>) -> impl IntoResponse {
-    // Merge with existing file so blank fields don't erase saved values
     let existing = crypto::read_cred_json().unwrap_or(json!({}));
 
     let email = if req.email.is_empty() {
@@ -235,13 +242,10 @@ async fn api_config_credentials(Json(req): Json<CredentialsRequest>) -> impl Int
 #[derive(Deserialize)]
 struct LockCommand {
     action: String,
+    vin: Option<String>,
 }
 
 async fn api_command_lock(Json(req): Json<LockCommand>) -> impl IntoResponse {
-    let vin = VEHICLE_INFO.lock().await.vin.clone();
-    if vin.is_empty() {
-        return Json(json!({"success": false, "message": "Vehicle not initialised yet"}));
-    }
     let command = match req.action.as_str() {
         "lock" => "0",
         "unlock" => "1",
@@ -252,18 +256,33 @@ async fn api_command_lock(Json(req): Json<LockCommand>) -> impl IntoResponse {
         }
     };
 
-    *DEBOUNCE_LOCK.lock().await = if command == "1" {
-        "unlock".to_string()
-    } else {
-        "lock".to_string()
+    let (internal_vin, showed_vin) = {
+        let mut vehicles = VEHICLES.lock().await;
+        match find_vehicle_mut(&mut vehicles, req.vin.as_deref()) {
+            None => return Json(json!({"success": false, "message": "Vehicle not found"})),
+            Some(vs) => {
+                vs.debounce_lock = if command == "1" {
+                    "unlock".to_string()
+                } else {
+                    "lock".to_string()
+                };
+                (vs.info.vin.clone(), vs.info.showed_vin.clone())
+            }
+        }
     };
 
     tokio::spawn(async move {
-        match send_lock_command(&vin, command).await {
+        match send_lock_command(&internal_vin, command).await {
             Ok(_) => info!("Lock command sent via dashboard"),
             Err(e) => {
                 error!("Lock command failed: {e}");
-                *DEBOUNCE_LOCK.lock().await = String::new();
+                let mut vehicles = VEHICLES.lock().await;
+                if let Some(vs) = vehicles
+                    .iter_mut()
+                    .find(|vs| vs.info.showed_vin == showed_vin)
+                {
+                    vs.debounce_lock = String::new();
+                }
             }
         }
     });
@@ -276,17 +295,10 @@ struct AcCommand {
     action: String,
     temp: Option<i64>,
     time: Option<i64>,
+    vin: Option<String>,
 }
 
 async fn api_command_ac(Json(req): Json<AcCommand>) -> impl IntoResponse {
-    let vin = VEHICLE_INFO.lock().await.vin.clone();
-    if vin.is_empty() {
-        return Json(json!({"success": false, "message": "Vehicle not initialised yet"}));
-    }
-    let (ac_temp, ac_time) = {
-        let s = VEHICLE_STATUS.lock().await;
-        (s.ac_temp, s.ac_time)
-    };
     let command = match req.action.as_str() {
         "on" => "1",
         "off" => "0",
@@ -295,21 +307,40 @@ async fn api_command_ac(Json(req): Json<AcCommand>) -> impl IntoResponse {
         }
     };
 
-    let oper_temp = req.temp.unwrap_or(ac_temp);
-    let oper_time = req.time.unwrap_or(ac_time);
-
-    *DEBOUNCE_AC.lock().await = if command == "1" {
-        "on".to_string()
-    } else {
-        "off".to_string()
+    let (internal_vin, showed_vin, oper_temp, oper_time) = {
+        let mut vehicles = VEHICLES.lock().await;
+        match find_vehicle_mut(&mut vehicles, req.vin.as_deref()) {
+            None => return Json(json!({"success": false, "message": "Vehicle not found"})),
+            Some(vs) => {
+                let oper_temp = req.temp.unwrap_or(vs.status.ac_temp);
+                let oper_time = req.time.unwrap_or(vs.status.ac_time);
+                vs.debounce_ac = if command == "1" {
+                    "on".to_string()
+                } else {
+                    "off".to_string()
+                };
+                (
+                    vs.info.vin.clone(),
+                    vs.info.showed_vin.clone(),
+                    oper_temp,
+                    oper_time,
+                )
+            }
+        }
     };
 
     tokio::spawn(async move {
-        match send_climate_command(&vin, command, oper_time, oper_temp).await {
+        match send_climate_command(&internal_vin, command, oper_time, oper_temp).await {
             Ok(_) => info!("AC command sent via dashboard"),
             Err(e) => {
                 error!("AC command failed: {e}");
-                *DEBOUNCE_AC.lock().await = String::new();
+                let mut vehicles = VEHICLES.lock().await;
+                if let Some(vs) = vehicles
+                    .iter_mut()
+                    .find(|vs| vs.info.showed_vin == showed_vin)
+                {
+                    vs.debounce_ac = String::new();
+                }
             }
         }
     });
@@ -320,6 +351,7 @@ async fn api_command_ac(Json(req): Json<AcCommand>) -> impl IntoResponse {
 #[derive(Deserialize)]
 struct PetmodeCommand {
     action: String,
+    vin: Option<String>,
 }
 
 async fn api_command_petmode(Json(req): Json<PetmodeCommand>) -> impl IntoResponse {
@@ -331,48 +363,86 @@ async fn api_command_petmode(Json(req): Json<PetmodeCommand>) -> impl IntoRespon
         }
     };
 
-    {
-        let mut s = VEHICLE_STATUS.lock().await;
-        s.petmode = enable;
-        if let Ok(state_str) = serde_json::to_string(&*s) {
-            let _ = fs::write(STATE_FILE, state_str);
+    let (internal_vin, showed_vin, ac_temp) = {
+        let mut vehicles = VEHICLES.lock().await;
+        match find_vehicle_mut(&mut vehicles, req.vin.as_deref()) {
+            None => return Json(json!({"success": false, "message": "Vehicle not found"})),
+            Some(vs) => {
+                vs.status.petmode = enable;
+                if let Ok(s) = serde_json::to_string(&vs.status) {
+                    let _ = fs::write(state_file_path(&vs.info.showed_vin), s);
+                }
+                vs.mqtt_publish = true;
+                (
+                    vs.info.vin.clone(),
+                    vs.info.showed_vin.clone(),
+                    vs.status.ac_temp,
+                )
+            }
         }
-    }
-    *MQTT_PUBLISH.lock().await = true;
+    };
 
     if enable {
-        let vin = VEHICLE_INFO.lock().await.vin.clone();
-        let ac_temp = VEHICLE_STATUS.lock().await.ac_temp;
         let oper_time = 30i64;
         tokio::spawn(async move {
-            while VEHICLE_STATUS.lock().await.petmode {
-                while VEHICLE_STATUS.lock().await.ac_status {
+            while {
+                let v = VEHICLES.lock().await;
+                v.iter()
+                    .find(|vs| vs.info.showed_vin == showed_vin)
+                    .map(|vs| vs.status.petmode)
+                    .unwrap_or(false)
+            } {
+                while {
+                    let v = VEHICLES.lock().await;
+                    v.iter()
+                        .find(|vs| vs.info.showed_vin == showed_vin)
+                        .map(|vs| vs.status.ac_status)
+                        .unwrap_or(false)
+                } {
                     time::sleep(Duration::from_secs(1)).await;
                 }
-                *DEBOUNCE_AC.lock().await = "on".to_string();
-                match send_climate_command(&vin, "1", oper_time, ac_temp).await {
+                {
+                    let mut v = VEHICLES.lock().await;
+                    if let Some(vs) = v.iter_mut().find(|vs| vs.info.showed_vin == showed_vin) {
+                        vs.debounce_ac = "on".to_string();
+                    }
+                }
+                match send_climate_command(&internal_vin, "1", oper_time, ac_temp).await {
                     Ok(_) => info!("Pet mode AC on"),
                     Err(e) => {
                         error!("Pet mode AC failed: {e}");
-                        *DEBOUNCE_AC.lock().await = String::new();
+                        let mut v = VEHICLES.lock().await;
+                        if let Some(vs) = v.iter_mut().find(|vs| vs.info.showed_vin == showed_vin) {
+                            vs.debounce_ac = String::new();
+                        }
                     }
                 }
                 time::sleep(Duration::from_secs(oper_time as u64 * 60)).await;
             }
         });
     } else {
-        let vin = VEHICLE_INFO.lock().await.vin.clone();
-        let (ac_time, ac_temp) = {
-            let s = VEHICLE_STATUS.lock().await;
-            (s.ac_time, s.ac_temp)
+        let (ac_time, _) = {
+            let v = VEHICLES.lock().await;
+            v.iter()
+                .find(|vs| vs.info.showed_vin == showed_vin)
+                .map(|vs| (vs.status.ac_time, vs.status.ac_temp))
+                .unwrap_or((30, 26))
         };
-        *DEBOUNCE_AC.lock().await = "off".to_string();
+        {
+            let mut v = VEHICLES.lock().await;
+            if let Some(vs) = v.iter_mut().find(|vs| vs.info.showed_vin == showed_vin) {
+                vs.debounce_ac = "off".to_string();
+            }
+        }
         tokio::spawn(async move {
-            match send_climate_command(&vin, "0", ac_time, ac_temp).await {
+            match send_climate_command(&internal_vin, "0", ac_time, ac_temp).await {
                 Ok(_) => info!("Pet mode AC off"),
                 Err(e) => {
                     error!("Pet mode AC off failed: {e}");
-                    *DEBOUNCE_AC.lock().await = String::new();
+                    let mut v = VEHICLES.lock().await;
+                    if let Some(vs) = v.iter_mut().find(|vs| vs.info.showed_vin == showed_vin) {
+                        vs.debounce_ac = String::new();
+                    }
                 }
             }
         });
@@ -384,35 +454,45 @@ async fn api_command_petmode(Json(req): Json<PetmodeCommand>) -> impl IntoRespon
 #[derive(Deserialize)]
 struct AcTimeCommand {
     time: i64,
+    vin: Option<String>,
 }
 
 async fn api_command_ac_time(Json(req): Json<AcTimeCommand>) -> impl IntoResponse {
-    {
-        let mut s = VEHICLE_STATUS.lock().await;
-        s.ac_time = req.time;
-        if let Ok(state_str) = serde_json::to_string(&*s) {
-            let _ = fs::write(STATE_FILE, state_str);
+    let mut vehicles = VEHICLES.lock().await;
+    match find_vehicle_mut(&mut vehicles, req.vin.as_deref()) {
+        None => Json(json!({"success": false, "message": "Vehicle not found"})),
+        Some(vs) => {
+            vs.status.ac_time = req.time;
+            if let Ok(s) = serde_json::to_string(&vs.status) {
+                let _ = fs::write(state_file_path(&vs.info.showed_vin), s);
+            }
+            vs.mqtt_publish = true;
+            Json(json!({"success": true, "message": format!("AC timer set to {} min", req.time)}))
         }
     }
-    *MQTT_PUBLISH.lock().await = true;
-    Json(json!({"success": true, "message": format!("AC timer set to {} min", req.time)}))
 }
 
 #[derive(Deserialize)]
 struct AcTempCommand {
     temp: i64,
+    vin: Option<String>,
 }
 
 async fn api_command_ac_temp(Json(req): Json<AcTempCommand>) -> impl IntoResponse {
-    {
-        let mut s = VEHICLE_STATUS.lock().await;
-        s.ac_temp = req.temp;
-        if let Ok(state_str) = serde_json::to_string(&*s) {
-            let _ = fs::write(STATE_FILE, state_str);
+    let mut vehicles = VEHICLES.lock().await;
+    match find_vehicle_mut(&mut vehicles, req.vin.as_deref()) {
+        None => Json(json!({"success": false, "message": "Vehicle not found"})),
+        Some(vs) => {
+            vs.status.ac_temp = req.temp;
+            if let Ok(s) = serde_json::to_string(&vs.status) {
+                let _ = fs::write(state_file_path(&vs.info.showed_vin), s);
+            }
+            vs.mqtt_publish = true;
+            Json(
+                json!({"success": true, "message": format!("AC temperature set to {}°C", req.temp)}),
+            )
         }
     }
-    *MQTT_PUBLISH.lock().await = true;
-    Json(json!({"success": true, "message": format!("AC temperature set to {}°C", req.temp)}))
 }
 
 // ── API: service restart ──────────────────────────────────────────────────────
@@ -429,6 +509,8 @@ async fn api_restart() -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gwm::{VehicleInfo, VehicleStatus};
+    use crate::VehicleState;
     use axum::{
         body::Body,
         http::{Request, StatusCode},
@@ -439,6 +521,25 @@ mod tests {
     async fn body_json(res: axum::response::Response) -> serde_json::Value {
         let bytes = res.into_body().collect().await.unwrap().to_bytes();
         serde_json::from_slice(&bytes).unwrap()
+    }
+
+    /// Push a default test vehicle into VEHICLES if not already present.
+    async fn ensure_test_vehicle() {
+        let mut vehicles = VEHICLES.lock().await;
+        if vehicles.is_empty() {
+            vehicles.push(VehicleState {
+                info: VehicleInfo {
+                    showed_vin: "TEST00000000TEST".to_string(),
+                    vin: "test_vin_internal".to_string(),
+                    brand_name: "Test".to_string(),
+                    ..VehicleInfo::default()
+                },
+                status: VehicleStatus::default(),
+                debounce_lock: String::new(),
+                debounce_ac: String::new(),
+                mqtt_publish: false,
+            });
+        }
     }
 
     // ── Shape tests ───────────────────────────────────────────────────────────
@@ -456,9 +557,7 @@ mod tests {
             .unwrap();
         assert_eq!(res.status(), StatusCode::OK);
         let json = body_json(res).await;
-        assert!(json.get("info").is_some(), "missing 'info' key");
-        assert!(json.get("status").is_some(), "missing 'status' key");
-        assert!(json.get("debounce").is_some(), "missing 'debounce' key");
+        assert!(json.get("vehicles").is_some(), "missing 'vehicles' key");
     }
 
     #[tokio::test]
@@ -496,7 +595,6 @@ mod tests {
         let mqtt = &json["mqtt"];
         assert!(mqtt.get("broker").is_some());
         assert!(mqtt.get("port").is_some());
-        // Password must be masked (empty) in GET response
         assert_eq!(mqtt["password"].as_str().unwrap_or("x"), "");
     }
 
@@ -575,10 +673,11 @@ mod tests {
         assert_eq!(json["success"], false);
     }
 
-    // ── Local-state command tests (no network; file write errors are ignored) ─
+    // ── Local-state command tests ─────────────────────────────────────────────
 
     #[tokio::test]
     async fn ac_temp_command_returns_success() {
+        ensure_test_vehicle().await;
         let res = router()
             .oneshot(
                 Request::builder()
@@ -593,11 +692,13 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
         let json = body_json(res).await;
         assert_eq!(json["success"], true);
-        assert_eq!(VEHICLE_STATUS.lock().await.ac_temp, 22);
+        let vehicles = VEHICLES.lock().await;
+        assert_eq!(vehicles[0].status.ac_temp, 22);
     }
 
     #[tokio::test]
     async fn ac_time_command_returns_success() {
+        ensure_test_vehicle().await;
         let res = router()
             .oneshot(
                 Request::builder()
@@ -612,7 +713,8 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
         let json = body_json(res).await;
         assert_eq!(json["success"], true);
-        assert_eq!(VEHICLE_STATUS.lock().await.ac_time, 20);
+        let vehicles = VEHICLES.lock().await;
+        assert_eq!(vehicles[0].status.ac_time, 20);
     }
 
     // ── Static file content-type tests ───────────────────────────────────────

@@ -19,9 +19,15 @@
     <!-- Vehicle info bar -->
     <div class="card" style="margin-bottom:var(--gap)">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-        <div>
+        <div style="flex:1;min-width:0">
           <div class="vehicle-name" id="vehicle-name">Connecting...</div>
           <div class="vehicle-vin"  id="vehicle-vin"></div>
+        </div>
+        <!-- Vehicle selector: shown only when there are multiple vehicles -->
+        <div id="vehicle-selector-wrap" style="display:none">
+          <select id="vehicle-select" onchange="onVehicleChange()"
+            style="background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:0.875rem;cursor:pointer">
+          </select>
         </div>
         <div class="last-updated" id="last-updated"></div>
       </div>
@@ -195,8 +201,44 @@
   <div class="toast-container" id="toasts"></div>
   <script src="/app.js"></script>
   <script>
-    let currentStatus = null;
+    let allVehicles = [];   // latest array from /api/status
+    let currentVin = null;  // showed_vin of the selected vehicle
+    let currentStatus = null; // the selected vehicle's data object
     let acVisible = false;
+
+    // ── Vehicle selector ──────────────────────────────────────────────────────
+
+    function updateVehicleSelector(vehicles) {
+      const wrap = document.getElementById('vehicle-selector-wrap');
+      const sel  = document.getElementById('vehicle-select');
+      if (vehicles.length <= 1) {
+        wrap.style.display = 'none';
+        return;
+      }
+      wrap.style.display = '';
+      // Rebuild options only when the list changes
+      const existing = Array.from(sel.options).map(o => o.value);
+      const incoming = vehicles.map(v => v.vin);
+      if (JSON.stringify(existing) !== JSON.stringify(incoming)) {
+        sel.innerHTML = '';
+        for (const v of vehicles) {
+          const opt = document.createElement('option');
+          opt.value = v.vin;
+          opt.textContent = [v.info.brandName, v.info.vtype, v.info.config]
+            .filter(Boolean).join(' ') + ' (' + v.vin.slice(-4) + ')';
+          sel.appendChild(opt);
+        }
+      }
+      if (currentVin) sel.value = currentVin;
+    }
+
+    function onVehicleChange() {
+      currentVin = document.getElementById('vehicle-select').value;
+      const v = allVehicles.find(v => v.vin === currentVin);
+      if (v) renderStatus(v);
+    }
+
+    // ── AC settings panel ─────────────────────────────────────────────────────
 
     function showAcSettings() {
       acVisible = true;
@@ -218,15 +260,17 @@
         document.getElementById('ac-time').value + ' min';
     }
 
+    // ── Commands ──────────────────────────────────────────────────────────────
+
     async function setAcTemp() {
       const temp = parseInt(document.getElementById('ac-temp').value);
-      const r = await apiPost('/api/command/ac_temp', { temp });
+      const r = await apiPost('/api/command/ac_temp', { temp, vin: currentVin });
       if (!r.success) showToast(r.message, 'error');
     }
 
     async function setAcTime() {
       const time = parseInt(document.getElementById('ac-time').value);
-      const r = await apiPost('/api/command/ac_time', { time });
+      const r = await apiPost('/api/command/ac_time', { time, vin: currentVin });
       if (!r.success) showToast(r.message, 'error');
     }
 
@@ -235,7 +279,7 @@
       const action = currentStatus.status.unlockStatus ? 'lock' : 'unlock';
       const btn = document.getElementById('btn-lock');
       btn.disabled = true;
-      const r = await apiPost('/api/command/lock', { action });
+      const r = await apiPost('/api/command/lock', { action, vin: currentVin });
       showToast(r.message, r.success ? 'success' : 'error');
       setTimeout(() => { btn.disabled = false; }, 4000);
     }
@@ -247,7 +291,7 @@
       btn.disabled = true;
       const temp = parseInt(document.getElementById('ac-temp').value);
       const time = parseInt(document.getElementById('ac-time').value);
-      const r = await apiPost('/api/command/ac', { action, temp, time });
+      const r = await apiPost('/api/command/ac', { action, temp, time, vin: currentVin });
       showToast(r.message, r.success ? 'success' : 'error');
       if (r.success && action === 'on') showAcSettings();
       setTimeout(() => { btn.disabled = false; }, 4000);
@@ -258,10 +302,12 @@
       const action = currentStatus.status.petmode ? 'off' : 'on';
       const btn = document.getElementById('btn-petmode');
       btn.disabled = true;
-      const r = await apiPost('/api/command/petmode', { action });
+      const r = await apiPost('/api/command/petmode', { action, vin: currentVin });
       showToast(r.message, r.success ? 'success' : 'error');
       setTimeout(() => { btn.disabled = false; }, 2000);
     }
+
+    // ── Rendering helpers ─────────────────────────────────────────────────────
 
     function setDoor(id, isOpen) {
       const el = document.getElementById(id);
@@ -416,10 +462,23 @@
       }
     }
 
+    // ── Polling ───────────────────────────────────────────────────────────────
+
     async function refresh() {
       try {
         const data = await fetch('/api/status').then(r => r.json());
-        renderStatus(data);
+        const vehicles = data.vehicles || [];
+        if (vehicles.length === 0) return;
+
+        allVehicles = vehicles;
+        updateVehicleSelector(vehicles);
+
+        // Pick the currently selected vehicle, defaulting to the first
+        if (!currentVin || !vehicles.find(v => v.vin === currentVin)) {
+          currentVin = vehicles[0].vin;
+        }
+        const selected = vehicles.find(v => v.vin === currentVin) || vehicles[0];
+        renderStatus(selected);
       } catch (e) {
         console.warn('Status fetch failed:', e);
       }

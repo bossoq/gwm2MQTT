@@ -4,12 +4,12 @@ A Rust service that bridges GWM Cloud vehicle telemetry to MQTT with Home Assist
 
 ## Features
 
-- Polls vehicle status from the GWM Cloud API and publishes it to MQTT
+- Polls **all vehicles** on the account and publishes each to its own MQTT topic namespace
 - Home Assistant auto-discovery for sensors, binary sensors, switches, numbers, and device tracker
 - Remote commands: lock/unlock and climate control (requires PIN)
 - Pet mode: keeps AC cycling automatically
 - Persists AC timer, temperature, and pet mode state locally across restarts
-- Web dashboard for live status, remote commands, and runtime configuration (default port 8080)
+- Web dashboard with **vehicle selector dropdown** for live status and remote commands (default port 8080)
 - Service restart button in the dashboard — reconnects automatically after restart
 - Credentials stored AES-256-GCM encrypted at rest, keyed to the host machine
 - Debian package via `cargo-deb` with systemd service and auto-restart
@@ -66,7 +66,7 @@ Configuration can be set at **compile time** via environment variables or at **r
 | `MQTT_PASSWORD` | — | MQTT password |
 | `MQTT_DISCOVERY_TOPIC` | `homeassistant` | Home Assistant discovery prefix |
 | `MQTT_TOPIC_PREFIX` | `gwm2mqtt` | MQTT topic prefix |
-| `VEHICLE_VIN` | — | Select vehicle by VIN (matched on first 3 + last 4 characters) |
+| `VEHICLE_VIN` | — | Restrict to a single vehicle by VIN (matched on first 3 + last 4 characters); all vehicles used when unset |
 | `REFRESH_INTERVAL` | `10` | Polling interval in seconds |
 | `WEB_PORT` | `8080` | Web dashboard port |
 
@@ -98,8 +98,8 @@ The service reads and writes files under `/opt/gwm2mqtt/`:
 |---|---|
 | `/opt/gwm2mqtt/credentials.json` | GWM account credentials — AES-256-GCM encrypted, keyed to `/etc/machine-id` |
 | `/opt/gwm2mqtt/mqtt.json` | MQTT broker config (written by dashboard) |
-| `/opt/gwm2mqtt/configuration.json` | Cached vehicle info |
-| `/opt/gwm2mqtt/state.json` | Persisted vehicle state (ac_time, ac_temp, petmode) |
+| `/opt/gwm2mqtt/configuration.json` | Cached vehicle info (array, one entry per vehicle) |
+| `/opt/gwm2mqtt/state_{VIN}.json` | Persisted vehicle state per vehicle (ac_time, ac_temp, petmode); legacy `state.json` is read on first run for migration |
 | `/opt/gwm2mqtt/logs/app.log` | Rolling log file (debug level, 10 MB × 10 files) |
 
 ## Home Assistant Entities
