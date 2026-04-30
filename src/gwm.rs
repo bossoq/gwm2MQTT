@@ -27,13 +27,16 @@ pub(crate) const BASE_URL_FILE: &str = "/opt/gwm2mqtt/baseurl.json";
 
 static CACHED_BASE_URL: LazyLock<RwLock<Option<String>>> = LazyLock::new(|| RwLock::new(None));
 
-pub(crate) fn get_base_url() -> String {
+/// Inner helper: reads the base URL from `path`, falling back to `DEFAULT_BASEURL`.
+/// Populates `CACHED_BASE_URL` on first call (or after cache is cleared).
+/// Extracted so tests can inject an arbitrary file path without touching the real file.
+pub(crate) fn get_base_url_from_file(path: &str) -> String {
     if let Ok(guard) = CACHED_BASE_URL.read() {
         if let Some(url) = guard.as_ref() {
             return url.clone();
         }
     }
-    let url = fs::read_to_string(BASE_URL_FILE)
+    let url = fs::read_to_string(path)
         .ok()
         .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
         .and_then(|v| v["baseUrl"].as_str().map(String::from))
@@ -43,6 +46,10 @@ pub(crate) fn get_base_url() -> String {
         *guard = Some(url.clone());
     }
     url
+}
+
+pub(crate) fn get_base_url() -> String {
+    get_base_url_from_file(BASE_URL_FILE)
 }
 
 pub fn set_base_url_cache(url: String) {
@@ -1220,9 +1227,12 @@ mod tests {
         if let Ok(mut g) = CACHED_BASE_URL.write() {
             *g = None;
         }
-        // BASE_URL_FILE does not exist in test env, so default is returned
-        let url = get_base_url();
-        assert!(!url.is_empty());
+        // Use a guaranteed non-existent temp path so the test does not depend
+        // on /opt/gwm2mqtt/baseurl.json being absent on the host machine.
+        let tmp_path = std::env::temp_dir().join("gwm2mqtt_test_no_baseurl.json");
+        let _ = std::fs::remove_file(&tmp_path);
+        let url = get_base_url_from_file(tmp_path.to_str().unwrap());
+        assert_eq!(url, DEFAULT_BASEURL, "must fall back to DEFAULT_BASEURL");
         assert!(
             Url::parse(&url).is_ok(),
             "returned URL must be parseable: {url}"
