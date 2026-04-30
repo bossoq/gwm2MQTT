@@ -35,7 +35,7 @@ http-body-util = "0.1"
 [package.metadata.deb]
 name = "gwm2mqtt"
 maintainer = "bossoq"
-copyright = "2024 bossoq"
+copyright = "2026 bossoq"
 extended-description = """\
 Polls the GWM Cloud API and publishes vehicle telemetry to an MQTT broker \
 for Home Assistant auto-discovery. Includes a web dashboard for live status \
