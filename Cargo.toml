@@ -1,6 +1,6 @@
 [package]
 name = "gwm2mqtt"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 
 [lib]
@@ -39,7 +39,7 @@ Polls the GWM Cloud API and publishes vehicle telemetry to an MQTT broker \
 for Home Assistant auto-discovery. Includes a web dashboard for live status \
 and remote commands.\
 """
-depends = "$auto"
+depends = ""
 section = "net"
 priority = "optional"
 assets = [
