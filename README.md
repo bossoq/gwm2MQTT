@@ -123,6 +123,6 @@ Once running, the following entities are auto-discovered per vehicle (`{prefix}/
 
 ## Notes
 
-- The GWM API base URL is a **required** setting (default: `https://example.api.com/`) and must be configured via **Settings → GWM API Base URL** before the service can reach the GWM cloud. It is stored in plain JSON at `/opt/gwm2mqtt/baseurl.json` (separate from the encrypted credentials file) and cached in memory at runtime. The field auto-corrects missing `https://` prefix and trailing `/`; the server validates scheme and host. Region-specific headers (`country: TH`, `language: th`, etc.) are compiled in to `STD_HEADER` in `gwm.rs` and must be changed there for other regions.
+- The GWM API base URL is a **required** setting (default: `unset`) and must be configured via **Settings → GWM API Base URL** before the service can reach the GWM cloud. It is stored in plain JSON at `/opt/gwm2mqtt/baseurl.json` (separate from the encrypted credentials file) and cached in memory at runtime. The field auto-corrects missing `https://` prefix and trailing `/`; the server validates scheme and host. Region-specific headers (`country: TH`, `language: th`, etc.) are compiled in to `STD_HEADER` in `gwm.rs` and must be changed there for other regions.
 - Remote commands (lock, climate) poll for confirmation up to 10 times with 5-second intervals.
 - To create a release: add the `release` label to a PR before merging it to `main`. The CI workflow will build the binary and `.deb` and publish a GitHub Release automatically.
