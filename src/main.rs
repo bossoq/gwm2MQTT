@@ -11,20 +11,16 @@ fn parse_args() -> u16 {
         .parse()
         .unwrap_or(8080);
 
-    let args: Vec<String> = std::env::args().collect();
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "-p" | "--port" => {
-                i += 1;
-                match args.get(i).and_then(|v| v.parse::<u16>().ok()) {
-                    Some(port) => return port,
-                    None => {
-                        eprintln!("error: -p requires a valid port number (1-65535)");
-                        std::process::exit(1);
-                    }
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "-p" | "--port" => match args.next().and_then(|v| v.parse::<u16>().ok()) {
+                Some(port) => return port,
+                None => {
+                    eprintln!("error: -p requires a valid port number (1-65535)");
+                    std::process::exit(1);
                 }
-            }
+            },
             "-h" | "--help" => {
                 println!("Usage: gwm2mqtt [-p PORT]");
                 println!();
@@ -39,7 +35,6 @@ fn parse_args() -> u16 {
                 std::process::exit(1);
             }
         }
-        i += 1;
     }
     default
 }

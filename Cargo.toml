@@ -29,3 +29,21 @@ axum = { version = "0.8", features = ["json"] }
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+
+[package.metadata.deb]
+name = "gwm2mqtt"
+maintainer = "bossoq"
+copyright = "2024 bossoq"
+extended-description = """\
+Polls the GWM Cloud API and publishes vehicle telemetry to an MQTT broker \
+for Home Assistant auto-discovery. Includes a web dashboard for live status \
+and remote commands.\
+"""
+depends = "$auto"
+section = "net"
+priority = "optional"
+assets = [
+    ["target/release/gwm2mqtt", "usr/bin/gwm2mqtt", "755"],
+    ["debian/gwm2mqtt.service", "usr/lib/systemd/system/gwm2mqtt.service", "644"],
+]
+maintainer-scripts = "debian"
