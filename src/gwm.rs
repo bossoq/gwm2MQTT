@@ -423,22 +423,34 @@ fn read_cred_file() -> Result<Value, String> {
 
 pub async fn login() -> Result<bool, String> {
     info!("Logging in using email");
-    // Prefer compile-time env vars; fall back to /opt/gwm2mqtt/credentials.json
-    let (email_owned, password_owned): (String, String) = match (*EMAIL, *PASSWORD) {
-        (Some(e), Some(p)) if !e.is_empty() && !p.is_empty() => (e.to_string(), p.to_string()),
-        _ => {
-            let creds = read_cred_file()?;
-            let e = creds["email"]
+    // Dashboard/file settings take priority; compile-time env vars are the fallback.
+    let (email_owned, password_owned): (String, String) = {
+        let from_file = read_cred_file().ok().and_then(|v| {
+            let e = v["email"]
                 .as_str()
                 .filter(|s| !s.is_empty())
-                .map(String::from)
-                .ok_or_else(|| "email not set in credentials file".to_string())?;
-            let p = creds["password"]
+                .map(String::from)?;
+            let p = v["password"]
                 .as_str()
                 .filter(|s| !s.is_empty())
-                .map(String::from)
-                .ok_or_else(|| "password not set in credentials file".to_string())?;
-            (e, p)
+                .map(String::from)?;
+            Some((e, p))
+        });
+        if let Some(pair) = from_file {
+            pair
+        } else {
+            match (*EMAIL, *PASSWORD) {
+                (Some(e), Some(p)) if !e.is_empty() && !p.is_empty() => {
+                    (e.to_string(), p.to_string())
+                }
+                _ => {
+                    return Err(
+                        "No credentials found. Save via the dashboard or set EMAIL/PASSWORD \
+                         at build time."
+                            .to_string(),
+                    )
+                }
+            }
         }
     };
     let email = email_owned.as_str();
@@ -514,19 +526,16 @@ pub async fn login() -> Result<bool, String> {
         }
     };
     let mut creds = CREDENTIALS.lock().await;
-    let pin_str = if !PIN.unwrap_or("").is_empty() {
-        PIN.unwrap_or("").to_string()
-    } else {
-        read_cred_file()
-            .ok()
-            .and_then(|v| {
-                v["pin"]
-                    .as_str()
-                    .filter(|s| !s.is_empty())
-                    .map(String::from)
-            })
-            .unwrap_or_default()
-    };
+    // Dashboard/file settings take priority; compile-time PIN is the fallback.
+    let pin_str = read_cred_file()
+        .ok()
+        .and_then(|v| {
+            v["pin"]
+                .as_str()
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+        })
+        .unwrap_or_else(|| PIN.unwrap_or("").to_string());
     let md5pin = if !pin_str.is_empty() {
         format!("{:X}", compute(pin_str.as_str())).to_ascii_lowercase()
     } else {

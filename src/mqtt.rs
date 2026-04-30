@@ -20,58 +20,30 @@ pub struct MQTTConfiguration {
 
 pub(crate) const MQTT_CONFIG_FILE: &str = "/opt/gwm2mqtt/mqtt.json";
 pub static MQTT_CONFIG: LazyLock<MQTTConfiguration> = LazyLock::new(|| {
-    let mqtt_broker = option_env!("MQTT_BROKER");
-    let mqtt_port = option_env!("MQTT_PORT");
-    let mqtt_user = option_env!("MQTT_USER");
-    let mqtt_password = option_env!("MQTT_PASSWORD");
-    let mqtt_discovery_topic = option_env!("MQTT_DISCOVERY_TOPIC");
-    let mqtt_topic_prefix = option_env!("MQTT_TOPIC_PREFIX");
-    if mqtt_broker.is_some() && mqtt_port.is_some() {
-        let mqtt_config = MQTTConfiguration {
-            broker: mqtt_broker.unwrap_or("").to_string(),
-            port: mqtt_port.unwrap_or("1883").parse().unwrap_or(1883),
-            user: mqtt_user.unwrap_or("").to_string(),
-            password: mqtt_password.unwrap_or("").to_string(),
-            discovery_topic: mqtt_discovery_topic.unwrap_or("homeassistant").to_string(),
-            topic_prefix: mqtt_topic_prefix.unwrap_or("gwm2mqtt").to_string(),
-        };
-        if let Ok(content) = serde_json::to_string(&mqtt_config) {
-            match fs::write(MQTT_CONFIG_FILE, content) {
-                Ok(_) => info!("MQTT configuration saved to file"),
-                Err(e) => error!("Failed to save MQTT configuration to file: {}", e),
-            }
-        } else {
-            panic!("Failed to serialize MQTT configuration");
+    // Dashboard/file settings take priority over compile-time env vars.
+    if let Ok(content) = fs::read_to_string(MQTT_CONFIG_FILE) {
+        match serde_json::from_str::<MQTTConfiguration>(&content) {
+            Ok(config) => return config,
+            Err(e) => error!("Failed to parse MQTT configuration file: {}", e),
         }
-        mqtt_config
-    } else {
-        match fs::read_to_string(MQTT_CONFIG_FILE) {
-            Ok(content) => match serde_json::from_str::<MQTTConfiguration>(&content) {
-                Ok(config) => config,
-                Err(e) => {
-                    error!("Failed to parse MQTT configuration file: {}", e);
-                    MQTTConfiguration {
-                        broker: "localhost".to_string(),
-                        port: 1883,
-                        user: "".to_string(),
-                        password: "".to_string(),
-                        discovery_topic: "homeassistant".to_string(),
-                        topic_prefix: "gwm2mqtt".to_string(),
-                    }
-                }
-            },
-            Err(e) => {
-                error!("Failed to read MQTT configuration file: {}", e);
-                MQTTConfiguration {
-                    broker: "localhost".to_string(),
-                    port: 1883,
-                    user: "".to_string(),
-                    password: "".to_string(),
-                    discovery_topic: "homeassistant".to_string(),
-                    topic_prefix: "gwm2mqtt".to_string(),
-                }
-            }
-        }
+    }
+    // Fall back to compile-time env vars.
+    MQTTConfiguration {
+        broker: option_env!("MQTT_BROKER")
+            .unwrap_or("localhost")
+            .to_string(),
+        port: option_env!("MQTT_PORT")
+            .unwrap_or("1883")
+            .parse()
+            .unwrap_or(1883),
+        user: option_env!("MQTT_USER").unwrap_or("").to_string(),
+        password: option_env!("MQTT_PASSWORD").unwrap_or("").to_string(),
+        discovery_topic: option_env!("MQTT_DISCOVERY_TOPIC")
+            .unwrap_or("homeassistant")
+            .to_string(),
+        topic_prefix: option_env!("MQTT_TOPIC_PREFIX")
+            .unwrap_or("gwm2mqtt")
+            .to_string(),
     }
 });
 

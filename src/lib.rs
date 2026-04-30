@@ -61,11 +61,6 @@ pub async fn run(web_port: u16) {
         panic!("Failed to set up MQTT client: {}", e);
     });
     *MQTT_CLIENT.lock().await = Some(main_client);
-    setup().await;
-    let vehicle_info = VEHICLE_INFO.lock().await.clone();
-    let brand_name = vehicle_info.brand_name.clone().to_lowercase();
-    let last_vin = vehicle_info.showed_vin.get(15..).unwrap_or("").to_string();
-    let topic_prefix = format!("{}/{}_{}", &*MQTT_CONFIG.topic_prefix, brand_name, last_vin);
     tokio::spawn(async move {
         loop {
             match eventloop.poll().await {
@@ -78,6 +73,21 @@ pub async fn run(web_port: u16) {
             }
         }
     });
+    loop {
+        match setup().await {
+            Ok(_) => break,
+            Err(e) => {
+                error!(
+                    "{e} — configure credentials via the web dashboard at /settings, retrying in 30 s"
+                );
+                time::sleep(Duration::from_secs(30)).await;
+            }
+        }
+    }
+    let vehicle_info = VEHICLE_INFO.lock().await.clone();
+    let brand_name = vehicle_info.brand_name.clone().to_lowercase();
+    let last_vin = vehicle_info.showed_vin.get(15..).unwrap_or("").to_string();
+    let topic_prefix = format!("{}/{}_{}", &*MQTT_CONFIG.topic_prefix, brand_name, last_vin);
     {
         let mutex_client = MQTT_CLIENT.lock().await;
         let client = mutex_client.as_ref().unwrap_or_else(|| {
@@ -160,22 +170,15 @@ pub async fn run(web_port: u16) {
     }
 }
 
-async fn setup() {
+async fn setup() -> Result<(), String> {
     match login().await {
-        Ok(result) => {
-            if result {
-                info!("Login successfully");
-            } else {
-                panic!("Cannot Login");
-            }
-        }
-        Err(e) => {
-            panic!("Failed to login: {}", e);
-        }
+        Ok(true) => info!("Login successfully"),
+        Ok(false) => return Err("Login returned false".to_string()),
+        Err(e) => return Err(format!("Failed to login: {e}")),
     }
     let (token_valid, _) = check_token().await;
     if !token_valid {
-        panic!("Token is invalid");
+        return Err("Token is invalid".to_string());
     }
     let env_vin = &VEHICLE_VIN;
     let vin_prefix = env_vin.get(..3).unwrap_or("");
@@ -212,12 +215,10 @@ async fn setup() {
     if need_reconfigure {
         let vehicle_infos = match get_vehicles().await {
             Ok(vehicle_infos) => vehicle_infos,
-            Err(_) => {
-                panic!("Failed to get vehicle list");
-            }
+            Err(_) => return Err("Failed to get vehicle list".to_string()),
         };
         if vehicle_infos.is_empty() {
-            panic!("No vehicle found");
+            return Err("No vehicle found".to_string());
         }
         if env_vin.is_empty() {
             info!("VEHICLE_VIN is not set, using the first vehicle in the list");
@@ -235,21 +236,16 @@ async fn setup() {
                 }
             }
             if vehicle_info.vin.is_empty() {
-                panic!("Vehicle with the VIN from the environment variable not found");
+                return Err(
+                    "Vehicle with the VIN from the environment variable not found".to_string(),
+                );
             }
         }
     }
-    match fs::write(
-        CONFIG_FILE,
-        serde_json::to_string(&vehicle_info).unwrap_or_else(|e| {
-            panic!("Failed to write configuration file: {}", e);
-        }),
-    ) {
-        Ok(_) => {}
-        Err(e) => {
-            panic!("Failed to write configuration file: {}", e);
-        }
-    }
+    let config_json = serde_json::to_string(&vehicle_info)
+        .map_err(|e| format!("Failed to serialize configuration: {e}"))?;
+    fs::write(CONFIG_FILE, config_json)
+        .map_err(|e| format!("Failed to write configuration file: {e}"))?;
     let mut global_vehicle_info = VEHICLE_INFO.lock().await;
     *global_vehicle_info = vehicle_info.clone();
     let full_name = format!(
@@ -263,19 +259,13 @@ async fn setup() {
     } else {
         info!("State VIN does not match. Resetting vehicle status");
         *vehicle_status = VehicleStatus::default();
-        match fs::write(
-            STATE_FILE,
-            serde_json::to_string(&*vehicle_status).unwrap_or_else(|e| {
-                panic!("Failed to write state file: {}", e);
-            }),
-        ) {
-            Ok(_) => {}
-            Err(e) => {
-                panic!("Failed to write state file: {}", e);
-            }
-        }
+        let state_json = serde_json::to_string(&*vehicle_status)
+            .map_err(|e| format!("Failed to serialize state: {e}"))?;
+        fs::write(STATE_FILE, state_json)
+            .map_err(|e| format!("Failed to write state file: {e}"))?;
     }
     *MQTT_PUBLISH.lock().await = true;
+    Ok(())
 }
 
 async fn handle_event(event: rumqttc::Event) {
