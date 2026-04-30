@@ -411,3 +411,194 @@ async fn api_command_ac_temp(Json(req): Json<AcTempCommand>) -> impl IntoRespons
     *MQTT_PUBLISH.lock().await = true;
     Json(json!({"success": true, "message": format!("AC temperature set to {}°C", req.temp)}))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    async fn body_json(res: axum::response::Response) -> serde_json::Value {
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    // ── Shape tests ───────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn status_endpoint_returns_ok_with_expected_keys() {
+        let res = router()
+            .oneshot(Request::builder().uri("/api/status").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let json = body_json(res).await;
+        assert!(json.get("info").is_some(),    "missing 'info' key");
+        assert!(json.get("status").is_some(),  "missing 'status' key");
+        assert!(json.get("debounce").is_some(), "missing 'debounce' key");
+    }
+
+    #[tokio::test]
+    async fn config_endpoint_returns_ok_with_expected_keys() {
+        let res = router()
+            .oneshot(Request::builder().uri("/api/config").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let json = body_json(res).await;
+        assert!(json.get("mqtt").is_some(),        "missing 'mqtt' key");
+        assert!(json.get("credentials").is_some(), "missing 'credentials' key");
+    }
+
+    #[tokio::test]
+    async fn config_mqtt_section_has_expected_fields() {
+        let res = router()
+            .oneshot(Request::builder().uri("/api/config").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let json = body_json(res).await;
+        let mqtt = &json["mqtt"];
+        assert!(mqtt.get("broker").is_some());
+        assert!(mqtt.get("port").is_some());
+        // Password must be masked (empty) in GET response
+        assert_eq!(mqtt["password"].as_str().unwrap_or("x"), "");
+    }
+
+    #[tokio::test]
+    async fn config_credentials_section_has_expected_fields() {
+        let res = router()
+            .oneshot(Request::builder().uri("/api/config").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let json = body_json(res).await;
+        let creds = &json["credentials"];
+        assert!(creds.get("email").is_some());
+        assert!(creds.get("hasPassword").is_some());
+        assert!(creds.get("hasPin").is_some());
+        assert!(creds.get("refreshInterval").is_some());
+    }
+
+    // ── Invalid-action error tests ────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn lock_invalid_action_returns_error() {
+        let res = router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/command/lock")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"action":"spin"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let json = body_json(res).await;
+        assert_eq!(json["success"], false);
+    }
+
+    #[tokio::test]
+    async fn ac_invalid_action_returns_error() {
+        let res = router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/command/ac")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"action":"blast"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let json = body_json(res).await;
+        assert_eq!(json["success"], false);
+    }
+
+    #[tokio::test]
+    async fn petmode_invalid_action_returns_error() {
+        let res = router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/command/petmode")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"action":"maybe"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let json = body_json(res).await;
+        assert_eq!(json["success"], false);
+    }
+
+    // ── Local-state command tests (no network; file write errors are ignored) ─
+
+    #[tokio::test]
+    async fn ac_temp_command_returns_success() {
+        let res = router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/command/ac_temp")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"temp":22}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let json = body_json(res).await;
+        assert_eq!(json["success"], true);
+        assert_eq!(VEHICLE_STATUS.lock().await.ac_temp, 22);
+    }
+
+    #[tokio::test]
+    async fn ac_time_command_returns_success() {
+        let res = router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/command/ac_time")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"time":20}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let json = body_json(res).await;
+        assert_eq!(json["success"], true);
+        assert_eq!(VEHICLE_STATUS.lock().await.ac_time, 20);
+    }
+
+    // ── Static file content-type tests ───────────────────────────────────────
+
+    #[tokio::test]
+    async fn style_endpoint_returns_css_content_type() {
+        let res = router()
+            .oneshot(Request::builder().uri("/style.css").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let ct = res.headers().get("content-type").unwrap().to_str().unwrap();
+        assert!(ct.contains("text/css"), "content-type was: {ct}");
+    }
+
+    #[tokio::test]
+    async fn script_endpoint_returns_js_content_type() {
+        let res = router()
+            .oneshot(Request::builder().uri("/app.js").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let ct = res.headers().get("content-type").unwrap().to_str().unwrap();
+        assert!(ct.contains("javascript"), "content-type was: {ct}");
+    }
+}
