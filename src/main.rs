@@ -12,7 +12,7 @@ fn parse_args() -> u16 {
         .unwrap_or(8080);
 
     let mut args = std::env::args().skip(1);
-    while let Some(arg) = args.next() {
+    if let Some(arg) = args.next() {
         match arg.as_str() {
             "-p" | "--port" => match args.next().and_then(|v| v.parse::<u16>().ok()) {
                 Some(port) => return port,

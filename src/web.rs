@@ -119,8 +119,8 @@ async fn api_config() -> impl IntoResponse {
     let email = creds["email"].as_str().unwrap_or("").to_string();
     let vehicle_vin = creds["vehicleVin"].as_str().unwrap_or("").to_string();
     let refresh_interval = creds["refreshInterval"].as_i64().unwrap_or(10);
-    let has_password = creds["password"].as_str().map_or(false, |s| !s.is_empty());
-    let has_pin = creds["pin"].as_str().map_or(false, |s| !s.is_empty());
+    let has_password = creds["password"].as_str().is_some_and(|s| !s.is_empty());
+    let has_pin = creds["pin"].as_str().is_some_and(|s| !s.is_empty());
 
     Json(json!({
         "mqtt": mqtt_val,
