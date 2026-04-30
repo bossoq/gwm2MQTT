@@ -314,16 +314,16 @@ fn vehicle_status_serializes_to_camel_case() {
     let s = VehicleStatus::default();
     let json = serde_json::to_value(&s).expect("serialize");
     // Verify the camelCase keys the frontend JavaScript expects
-    assert!(json.get("unlockStatus").is_some(),  "unlockStatus");
-    assert!(json.get("flDoorOpen").is_some(),    "flDoorOpen");
-    assert!(json.get("acStatus").is_some(),      "acStatus");
+    assert!(json.get("unlockStatus").is_some(), "unlockStatus");
+    assert!(json.get("flDoorOpen").is_some(), "flDoorOpen");
+    assert!(json.get("acStatus").is_some(), "acStatus");
     assert!(json.get("chargingStatus").is_some(), "chargingStatus");
-    assert!(json.get("acTemp").is_some(),         "acTemp");
-    assert!(json.get("acTime").is_some(),         "acTime");
-    assert!(json.get("updatedAt").is_some(),      "updatedAt");
+    assert!(json.get("acTemp").is_some(), "acTemp");
+    assert!(json.get("acTime").is_some(), "acTime");
+    assert!(json.get("updatedAt").is_some(), "updatedAt");
     // Snake-case keys must NOT appear
     assert!(json.get("unlock_status").is_none(), "no snake_case");
-    assert!(json.get("fl_door_open").is_none(),  "no snake_case");
+    assert!(json.get("fl_door_open").is_none(), "no snake_case");
 }
 
 #[test]
@@ -331,15 +331,15 @@ fn vehicle_status_json_round_trip() {
     let original = parse_vehicle_status("ROUNDTRIP123456789", &sample_data());
     let json_str = serde_json::to_string(&original).expect("serialize");
     let restored: VehicleStatus = serde_json::from_str(&json_str).expect("deserialize");
-    assert_eq!(restored.vin,      original.vin);
-    assert_eq!(restored.mileage,  original.mileage);
-    assert_eq!(restored.soc,      original.soc);
-    assert_eq!(restored.range,    original.range);
-    assert_eq!(restored.ac_temp,  original.ac_temp);
-    assert_eq!(restored.ac_time,  original.ac_time);
-    assert_eq!(restored.petmode,  original.petmode);
+    assert_eq!(restored.vin, original.vin);
+    assert_eq!(restored.mileage, original.mileage);
+    assert_eq!(restored.soc, original.soc);
+    assert_eq!(restored.range, original.range);
+    assert_eq!(restored.ac_temp, original.ac_temp);
+    assert_eq!(restored.ac_time, original.ac_time);
+    assert_eq!(restored.petmode, original.petmode);
     assert_eq!(restored.fl_tire_pressure, original.fl_tire_pressure);
-    assert_eq!(restored.unlock_status,    original.unlock_status);
-    assert_eq!(restored.longitude,        original.longitude);
-    assert_eq!(restored.latitude,         original.latitude);
+    assert_eq!(restored.unlock_status, original.unlock_status);
+    assert_eq!(restored.longitude, original.longitude);
+    assert_eq!(restored.latitude, original.latitude);
 }

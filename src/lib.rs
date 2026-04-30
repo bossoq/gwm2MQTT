@@ -43,8 +43,10 @@ pub(crate) static VEHICLE_STATUS: LazyLock<Mutex<VehicleStatus>> = LazyLock::new
     Mutex::new(vehicle_status)
 });
 pub(crate) static MQTT_PUBLISH: LazyLock<Mutex<bool>> = LazyLock::new(|| Mutex::new(false));
-pub(crate) static DEBOUNCE_LOCK: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new("".to_string()));
-pub(crate) static DEBOUNCE_AC: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new("".to_string()));
+pub(crate) static DEBOUNCE_LOCK: LazyLock<Mutex<String>> =
+    LazyLock::new(|| Mutex::new("".to_string()));
+pub(crate) static DEBOUNCE_AC: LazyLock<Mutex<String>> =
+    LazyLock::new(|| Mutex::new("".to_string()));
 static MQTT_CLIENT: LazyLock<Mutex<Option<rumqttc::AsyncClient>>> =
     LazyLock::new(|| Mutex::new(None));
 

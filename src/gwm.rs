@@ -413,8 +413,10 @@ fn sign_calc_post(payload: &Value, url: &Url, headers: HeaderMap) -> HeaderMap {
 }
 
 fn read_cred_file() -> Result<Value, String> {
-    let content = fs::read_to_string(CRED_FILE)
-        .map_err(|_| "No credentials found. Set EMAIL/PASSWORD at build time or save via the dashboard.".to_string())?;
+    let content = fs::read_to_string(CRED_FILE).map_err(|_| {
+        "No credentials found. Set EMAIL/PASSWORD at build time or save via the dashboard."
+            .to_string()
+    })?;
     serde_json::from_str::<Value>(&content)
         .map_err(|e| format!("Failed to parse credentials file: {e}"))
 }
@@ -422,22 +424,23 @@ fn read_cred_file() -> Result<Value, String> {
 pub async fn login() -> Result<bool, String> {
     info!("Logging in using email");
     // Prefer compile-time env vars; fall back to /opt/gwm2mqtt/credentials.json
-    let (email_owned, password_owned): (String, String) =
-        match (*EMAIL, *PASSWORD) {
-            (Some(e), Some(p)) if !e.is_empty() && !p.is_empty() => {
-                (e.to_string(), p.to_string())
-            }
-            _ => {
-                let creds = read_cred_file()?;
-                let e = creds["email"].as_str().filter(|s| !s.is_empty())
-                    .map(String::from)
-                    .ok_or_else(|| "email not set in credentials file".to_string())?;
-                let p = creds["password"].as_str().filter(|s| !s.is_empty())
-                    .map(String::from)
-                    .ok_or_else(|| "password not set in credentials file".to_string())?;
-                (e, p)
-            }
-        };
+    let (email_owned, password_owned): (String, String) = match (*EMAIL, *PASSWORD) {
+        (Some(e), Some(p)) if !e.is_empty() && !p.is_empty() => (e.to_string(), p.to_string()),
+        _ => {
+            let creds = read_cred_file()?;
+            let e = creds["email"]
+                .as_str()
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .ok_or_else(|| "email not set in credentials file".to_string())?;
+            let p = creds["password"]
+                .as_str()
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .ok_or_else(|| "password not set in credentials file".to_string())?;
+            (e, p)
+        }
+    };
     let email = email_owned.as_str();
     let password = password_owned.as_str();
     let url = Url::parse(BASEURL)
@@ -516,7 +519,12 @@ pub async fn login() -> Result<bool, String> {
     } else {
         read_cred_file()
             .ok()
-            .and_then(|v| v["pin"].as_str().filter(|s| !s.is_empty()).map(String::from))
+            .and_then(|v| {
+                v["pin"]
+                    .as_str()
+                    .filter(|s| !s.is_empty())
+                    .map(String::from)
+            })
             .unwrap_or_default()
     };
     let md5pin = if !pin_str.is_empty() {

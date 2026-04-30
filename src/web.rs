@@ -59,12 +59,18 @@ async fn settings_page() -> Html<&'static str> {
 }
 
 async fn style() -> impl IntoResponse {
-    ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], STYLE_CSS)
+    (
+        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+        STYLE_CSS,
+    )
 }
 
 async fn script() -> impl IntoResponse {
     (
-        [(header::CONTENT_TYPE, "application/javascript; charset=utf-8")],
+        [(
+            header::CONTENT_TYPE,
+            "application/javascript; charset=utf-8",
+        )],
         APP_JS,
     )
 }
@@ -224,7 +230,9 @@ async fn api_config_credentials(Json(req): Json<CredentialsRequest>) -> impl Int
         Ok(content) => match fs::write(CRED_FILE, content) {
             Ok(_) => {
                 info!("Credentials updated via dashboard");
-                Json(json!({"success": true, "message": "Account settings saved. Restart to apply."}))
+                Json(
+                    json!({"success": true, "message": "Account settings saved. Restart to apply."}),
+                )
             }
             Err(e) => {
                 error!("Failed to write credentials: {e}");
@@ -248,9 +256,13 @@ async fn api_command_lock(Json(req): Json<LockCommand>) -> impl IntoResponse {
         return Json(json!({"success": false, "message": "Vehicle not initialised yet"}));
     }
     let command = match req.action.as_str() {
-        "lock"   => "0",
+        "lock" => "0",
         "unlock" => "1",
-        _ => return Json(json!({"success": false, "message": "Invalid action. Use 'lock' or 'unlock'"})),
+        _ => {
+            return Json(
+                json!({"success": false, "message": "Invalid action. Use 'lock' or 'unlock'"}),
+            )
+        }
     };
 
     *DEBOUNCE_LOCK.lock().await = if command == "1" {
@@ -289,9 +301,11 @@ async fn api_command_ac(Json(req): Json<AcCommand>) -> impl IntoResponse {
         (s.ac_temp, s.ac_time)
     };
     let command = match req.action.as_str() {
-        "on"  => "1",
+        "on" => "1",
         "off" => "0",
-        _ => return Json(json!({"success": false, "message": "Invalid action. Use 'on' or 'off'"})),
+        _ => {
+            return Json(json!({"success": false, "message": "Invalid action. Use 'on' or 'off'"}))
+        }
     };
 
     let oper_temp = req.temp.unwrap_or(ac_temp);
@@ -323,9 +337,11 @@ struct PetmodeCommand {
 
 async fn api_command_petmode(Json(req): Json<PetmodeCommand>) -> impl IntoResponse {
     let enable = match req.action.as_str() {
-        "on"  => true,
+        "on" => true,
         "off" => false,
-        _ => return Json(json!({"success": false, "message": "Invalid action. Use 'on' or 'off'"})),
+        _ => {
+            return Json(json!({"success": false, "message": "Invalid action. Use 'on' or 'off'"}))
+        }
     };
 
     {
@@ -432,32 +448,50 @@ mod tests {
     #[tokio::test]
     async fn status_endpoint_returns_ok_with_expected_keys() {
         let res = router()
-            .oneshot(Request::builder().uri("/api/status").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::OK);
         let json = body_json(res).await;
-        assert!(json.get("info").is_some(),    "missing 'info' key");
-        assert!(json.get("status").is_some(),  "missing 'status' key");
+        assert!(json.get("info").is_some(), "missing 'info' key");
+        assert!(json.get("status").is_some(), "missing 'status' key");
         assert!(json.get("debounce").is_some(), "missing 'debounce' key");
     }
 
     #[tokio::test]
     async fn config_endpoint_returns_ok_with_expected_keys() {
         let res = router()
-            .oneshot(Request::builder().uri("/api/config").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/config")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::OK);
         let json = body_json(res).await;
-        assert!(json.get("mqtt").is_some(),        "missing 'mqtt' key");
-        assert!(json.get("credentials").is_some(), "missing 'credentials' key");
+        assert!(json.get("mqtt").is_some(), "missing 'mqtt' key");
+        assert!(
+            json.get("credentials").is_some(),
+            "missing 'credentials' key"
+        );
     }
 
     #[tokio::test]
     async fn config_mqtt_section_has_expected_fields() {
         let res = router()
-            .oneshot(Request::builder().uri("/api/config").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/config")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         let json = body_json(res).await;
@@ -471,7 +505,12 @@ mod tests {
     #[tokio::test]
     async fn config_credentials_section_has_expected_fields() {
         let res = router()
-            .oneshot(Request::builder().uri("/api/config").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/config")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         let json = body_json(res).await;
@@ -583,7 +622,12 @@ mod tests {
     #[tokio::test]
     async fn style_endpoint_returns_css_content_type() {
         let res = router()
-            .oneshot(Request::builder().uri("/style.css").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/style.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::OK);
@@ -594,7 +638,12 @@ mod tests {
     #[tokio::test]
     async fn script_endpoint_returns_js_content_type() {
         let res = router()
-            .oneshot(Request::builder().uri("/app.js").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/app.js")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::OK);
