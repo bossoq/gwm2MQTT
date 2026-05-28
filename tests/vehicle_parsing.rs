@@ -4,12 +4,12 @@ use serde_json::json;
 fn sample_data() -> serde_json::Value {
     json!({
         "items": [
-            {"code": "2103010", "value": 12345},   // mileage
+            {"code": "2103010", "value": 12345},    // mileage
             {"code": "2013021", "value": 80},       // soc
             {"code": "2011007", "value": 320},      // range
             {"code": "2013022", "value": "45"},     // charge_time (string)
             {"code": "2041142", "value": "1"},      // charging_status: charging
-            {"code": "2042082", "value": "1"},      // charging_port_plugged
+            {"code": "2042082", "value": 1},        // charging_port_plugged
             {"code": "2202001", "value": "1"},      // ac_status: on
             {"code": "2078020", "value": "0"},      // air_filter_status: off
             {"code": "2208001", "value": "1"},      // unlock_status: unlocked
