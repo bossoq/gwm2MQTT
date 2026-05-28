@@ -1128,7 +1128,7 @@ pub fn parse_vehicle_status(vin: &str, data: &Value) -> VehicleStatus {
             .get(&get("2041142").as_str().unwrap_or("0"))
             .unwrap_or(&"Unknown Mapping")
             .to_string(),
-        charging_port_plugged: get("2042082").as_str().unwrap_or("0") == "1",
+        charging_port_plugged: get("2042082").as_i64().unwrap_or(0) == 1,
         ac_status: get("2202001").as_str().unwrap_or("0") == "1",
         air_filter_status: get("2078020").as_str().unwrap_or("0") == "1",
         unlock_status: get("2208001").as_str().unwrap_or("0") == "1",
